@@ -58,10 +58,6 @@
             Acércate a la cámara, dile quién eres y descubre un mensaje especial
             antes de votar si crees que será niño o niña.
           </p>
-          <button class="btn btn-primary" id="btnStart">
-            <span class="btn-icon">📷</span> Comenzar experiencia
-          </button>
-          <button class="btn btn-ghost" id="btnReplayNarration">🔊 Escuchar de nuevo</button>
           <p class="fineprint" id="permissionHint">Necesitaremos permiso para usar tu cámara y micrófono.</p>
         </div>
       </div>
@@ -127,8 +123,7 @@
               <span class="vote-label">Niño</span>
             </button>
           </div>
-          <label class="field-label" for="voterName">Tu nombre</label>
-          <input type="text" id="voterName" class="text-input" placeholder="Escribe tu nombre">
+          <p class="vote-voter-name" id="voteVoterName">Votando como <strong>...</strong></p>
           <button class="btn btn-primary btn-wide" id="btnSubmitVote">Enviar voto</button>
           <p class="fineprint" id="voteError" role="alert"></p>
         </div>
@@ -141,8 +136,6 @@
           <div class="surprise-emoji">🎊</div>
           <h2 class="display-title">¡Gracias por votar!</h2>
           <p class="body-text">Tu voto quedó guardado. Muy pronto, en la fiesta, sabremos si acerté… ¡o si me llevé una sorpresa!</p>
-          <button class="btn btn-secondary" id="btnVoteAgainInfo">Ver estadísticas</button>
-          <button class="btn btn-ghost" id="btnRestart">Otra persona quiere participar</button>
         </div>
       </div>
 

@@ -233,7 +233,8 @@ function onPersonRecognized(category) {
   cameraStatus.textContent = '¡Ya sé quién eres!';
   const entry = MESSAGES[category] || MESSAGES.familiar;
   const message = randomFrom(entry.options);
-  state.currentFamiliar = { category, label: entry.label, kicker: entry.kicker, message };
+  const voterName = CATEGORY_DISPLAY_LABEL[category] || entry.label;
+  state.currentFamiliar = { category, label: entry.label, kicker: entry.kicker, message, voterName };
   babySpeak('¡Hola! Ya sé quién eres.', () => {
     showMessageScreen();
   });
@@ -343,12 +344,6 @@ function narratorSpeak(text, onEnd) {
 const WELCOME_NARRATION =
   '¡Estamos a punto de conocernos! Acércate a la cámara, dile quién eres, y descubre un mensaje especial antes de votar si crees que será niño o niña.';
 
-// Botón para volver a escuchar la narración de bienvenida cuando el usuario quiera
-// (por separado, sin avanzar de pantalla).
-$('btnReplayNarration').addEventListener('click', () => {
-  narratorSpeak(WELCOME_NARRATION);
-});
-
 function startListeningForIdentity() {
   state.awaitingAnswer = true;
   listeningPulse.classList.add('is-on');
@@ -372,9 +367,9 @@ function startListeningForIdentity() {
 
   clearTimeout(state.retryTimer);
   state.retryTimer = setTimeout(() => {
-    // 20 segundos sin respuesta: se repite la pregunta.
+    // 15 segundos sin respuesta: se repite la pregunta.
     try { recognition.stop(); } catch (e) {}
-  }, 20000);
+  }, 15000);
 
   recognition.onresult = (event) => {
     const transcript = event.results[0][0].transcript;
@@ -512,6 +507,36 @@ const MESSAGES = {
   },
 };
 
+// Nombres de respaldo para mostrar en la votación cuando no se logra
+// extraer un nombre propio de lo que la persona dijo o escribió.
+const CATEGORY_DISPLAY_LABEL = {
+  papa: 'Papá Edras',
+  mama: 'Mamá',
+  abuela: 'Abuela',
+  abuelo: 'Abuelo',
+  tia: 'Tía',
+  tio: 'Tío',
+  prima: 'Prima',
+  primo: 'Primo',
+  familiar: 'Invitado',
+};
+
+// Intenta sacar un nombre propio de frases como "Soy su tía Marcela"
+// (quedaría "Marcela"). Si no encuentra nada usable, usa un nombre de
+// respaldo según la categoría (ej. "Tía").
+function extractDisplayName(rawText, category) {
+  const cleaned = (rawText || '')
+    .replace(/^\s*(soy|es)\s+/i, '')
+    .replace(/^\s*(su|el|la|los|las)\s+/i, '')
+    .replace(/^(pap[aá]|papi|mam[aá]|mami|abuela|abuelo|t[ií]a|t[ií]o|prima|primo)\s*/i, '')
+    .trim();
+
+  if (cleaned.length > 1 && cleaned.length < 40) {
+    return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+  }
+  return CATEGORY_DISPLAY_LABEL[category] || 'Invitado';
+}
+
 // Reglas de clasificación por palabras clave (orden importa: más específico primero).
 function classifyIdentity(rawText) {
   const text = rawText.toLowerCase();
@@ -548,7 +573,8 @@ function handleIdentityAnswer(rawText) {
   const category = classifyIdentity(rawText);
   const entry = MESSAGES[category];
   const message = randomFrom(entry.options);
-  state.currentFamiliar = { category, label: entry.label, kicker: entry.kicker, message };
+  const voterName = extractDisplayName(rawText, category);
+  state.currentFamiliar = { category, label: entry.label, kicker: entry.kicker, message, voterName };
   showMessageScreen();
 }
 
@@ -569,20 +595,37 @@ function showScreen(name) {
   screens[name].classList.add('is-active');
 }
 
-// --- Pantalla 0 -> 1: iniciar experiencia ---
-// Primero suena el audio de bienvenida completo; solo cuando termina,
-// se muestra la pantalla de cámara y se activa la cámara/micrófono.
-$('btnStart').addEventListener('click', () => {
-  $('btnStart').disabled = true;
-  narratorSpeak(WELCOME_NARRATION, async () => {
-    $('btnStart').disabled = false;
-    showScreen('camera');
+// --- Pantalla 0 -> 1: iniciar experiencia, todo automático ---
+// La cámara aparece de inmediato; el audio de bienvenida suena al mismo
+// tiempo, mientras la cámara ya está buscando/reconociendo un rostro
+// (no se espera a que termine el audio para mostrarla).
+let welcomeStarted = false;
+
+function startWelcomeFlow() {
+  if (welcomeStarted) return;
+  welcomeStarted = true;
+
+  showScreen('camera');
+  narratorSpeak(WELCOME_NARRATION); // suena en paralelo, no bloquea nada
+
+  (async () => {
     // Cargamos los modelos (incluye reconocimiento facial, si hay fotos) en
     // paralelo con el permiso/inicio de cámara, para no sumar esperas.
     const [, ok] = await Promise.all([loadFaceModels(), startCamera()]);
     if (ok) runDetectionLoop();
-  });
+  })();
+}
+
+window.addEventListener('DOMContentLoaded', () => {
+  setTimeout(startWelcomeFlow, 300);
 });
+
+// Algunos navegadores (sobre todo en celular) bloquean el audio automático
+// hasta el primer toque en la pantalla. Este respaldo silencioso lo dispara
+// con el primer toque/clic/tecla, sin necesitar un botón visible.
+document.addEventListener('click', startWelcomeFlow, { once: true });
+document.addEventListener('keydown', startWelcomeFlow, { once: true });
+document.addEventListener('touchstart', startWelcomeFlow, { once: true });
 
 // --- Pantalla 2: mensaje personalizado ---
 function showMessageScreen() {
@@ -596,7 +639,12 @@ function showMessageScreen() {
 $('btnToVote').addEventListener('click', () => {
   window.speechSynthesis && window.speechSynthesis.cancel();
   showScreen('transition');
-  setTimeout(() => showScreen('vote'), 1800);
+  setTimeout(() => {
+    // Mostramos el nombre ya capturado al identificarse, sin volver a pedirlo.
+    const name = (state.currentFamiliar && state.currentFamiliar.voterName) || 'Invitado';
+    $('voteVoterName').innerHTML = `Votando como <strong>${escapeHtml(name)}</strong>`;
+    showScreen('vote');
+  }, 1800);
 });
 
 // --- Pantalla 4: votación ---
@@ -610,14 +658,10 @@ voteOptions.forEach((btn) => {
 });
 
 $('btnSubmitVote').addEventListener('click', async () => {
-  const name = $('voterName').value.trim();
+  const name = (state.currentFamiliar && state.currentFamiliar.voterName) || 'Invitado';
   const errorEl = $('voteError');
   if (!state.selectedVote) {
     errorEl.textContent = 'Elige si crees que será niño o niña.';
-    return;
-  }
-  if (!name) {
-    errorEl.textContent = 'Escribe tu nombre para guardar tu voto.';
     return;
   }
   errorEl.textContent = '';
@@ -635,28 +679,26 @@ $('btnSubmitVote').addEventListener('click', async () => {
 });
 
 // --- Pantalla 5: sorpresa final ---
+// Se muestra 5 segundos y vuelve sola a la cámara para el siguiente
+// invitado, en bucle, sin necesitar ningún botón.
 function showSurpriseScreen() {
   showScreen('surprise');
   launchConfetti();
+  setTimeout(restartForNextPerson, 5000);
 }
 
-$('btnVoteAgainInfo').addEventListener('click', () => {
-  activateTab('stats');
-});
-
-$('btnRestart').addEventListener('click', () => {
+function restartForNextPerson() {
   // Reinicia el flujo para que otra persona participe, sin recargar la cámara.
   state.faceDetected = false;
   state.selectedVote = null;
   state.currentFamiliar = null;
-  $('voterName').value = '';
   voteOptions.forEach((b) => b.classList.remove('is-selected'));
   $('typeInsteadInput').value = '';
   $('typeInsteadRow').hidden = true;
   cameraStatus.textContent = 'Buscando a alguien frente a la cámara…';
   showScreen('camera');
   runDetectionLoop();
-});
+}
 
 /* ---------------------------------------------------------------------
    8. VOTACIÓN Y ALMACENAMIENTO (Supabase — compartido entre celular y TV)
