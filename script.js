@@ -83,11 +83,36 @@ const listeningPulse = $('listeningPulse');
 const MODEL_URL = 'https://justadudewhohacks.github.io/face-api.js/models';
 
 // --- Reconocimiento facial opcional ---
-// Si en /assets/faces/<categoria>/fotoN.jpg hay fotos de referencia, la app
-// intenta reconocer a la persona por su rostro y salta directo al mensaje
-// personalizado, sin preguntar por voz. Si no hay fotos, o el rostro no
-// coincide con ninguna, se sigue preguntando "¿quién eres tú?" como siempre.
-const FACE_CATEGORIES = ['papa', 'mama', 'abuela', 'abuelo', 'tia', 'tio', 'prima', 'primo'];
+// Cada PERSONA (no cada categoría) tiene su propia carpeta de fotos en
+// /assets/faces/<id>/fotoN.jpg — así se puede distinguir, por ejemplo,
+// entre "Abuela María" y "Abuela Rosa". Si en la carpeta de alguien hay
+// fotos, la app intenta reconocerla por su rostro y salta directo al
+// mensaje personalizado. Si no hay fotos, o el rostro no coincide con
+// nadie, se sigue preguntando "¿quién eres tú?" como siempre.
+//
+// EDITA ESTA LISTA para agregar, quitar o renombrar personas. El "id" debe
+// coincidir exactamente con el nombre de su carpeta en assets/faces/.
+const PEOPLE = [
+  { id: 'papa', category: 'papa', name: 'Edras' },
+  { id: 'mama', category: 'mama', name: 'Nazareth' },
+  { id: 'abuela_maria', category: 'abuela', name: 'María' },
+  { id: 'abuela_maricela', category: 'abuela', name: 'Maricela' },
+  { id: 'abuela_rosa', category: 'abuela', name: 'Rosa' },
+  { id: 'abuelo', category: 'abuelo', name: '' },
+  { id: 'tia_brenda', category: 'tia', name: 'Brenda' },
+  { id: 'tia_karina', category: 'tia', name: 'Karina' },
+  { id: 'tia_nelcy', category: 'tia', name: 'Nelcy' },
+  { id: 'tia_glenda', category: 'tia', name: 'Glenda' },
+  { id: 'tio_osman', category: 'tio', name: 'Osman' },
+  { id: 'tio_juan', category: 'tio', name: 'Juan' },
+  { id: 'tio_eduardo', category: 'tio', name: 'Eduardo' },
+  { id: 'primo_abdiel', category: 'primo', name: 'Abdiel' },
+  { id: 'prima_addy', category: 'prima', name: 'Addy' },
+  { id: 'prima_amsy', category: 'prima', name: 'Amsy' },
+  { id: 'prima_kory', category: 'prima', name: 'Kory' },
+  { id: 'prima_alexandra', category: 'prima', name: 'Alexandra' },
+];
+
 const MAX_PHOTOS_PER_CATEGORY = 5;
 const PHOTO_EXTENSIONS = ['jpg', 'jpeg', 'png'];
 const FACE_MATCH_THRESHOLD = 0.5; // menor = más estricto
@@ -95,15 +120,16 @@ const FACE_MATCH_THRESHOLD = 0.5; // menor = más estricto
 let faceMatcher = null;
 let recognitionReady = false;
 
-// Carga (si existen) las fotos de referencia y calcula su "huella facial".
+// Carga (si existen) las fotos de referencia de cada persona y calcula su
+// "huella facial" individual.
 async function loadFaceEnrollment() {
   const labeledDescriptors = [];
 
-  for (const category of FACE_CATEGORIES) {
+  for (const person of PEOPLE) {
     const descriptors = [];
     for (let i = 1; i <= MAX_PHOTOS_PER_CATEGORY; i++) {
       for (const ext of PHOTO_EXTENSIONS) {
-        const url = `assets/faces/${category}/foto${i}.${ext}`;
+        const url = `assets/faces/${person.id}/foto${i}.${ext}`;
         try {
           const img = await faceapi.fetchImage(url);
           const detection = await faceapi
@@ -113,12 +139,12 @@ async function loadFaceEnrollment() {
           if (detection) descriptors.push(detection.descriptor);
           break; // esta foto sí existía (con esta extensión); pasamos a la siguiente
         } catch (err) {
-          // No existe assets/faces/<categoria>/fotoN.<ext> — seguimos intentando.
+          // No existe assets/faces/<id>/fotoN.<ext> — seguimos intentando.
         }
       }
     }
     if (descriptors.length) {
-      labeledDescriptors.push(new faceapi.LabeledFaceDescriptors(category, descriptors));
+      labeledDescriptors.push(new faceapi.LabeledFaceDescriptors(person.id, descriptors));
     }
   }
 
@@ -160,13 +186,14 @@ async function startCamera() {
     return true;
   } catch (err) {
     console.warn('No se pudo acceder a la cámara:', err);
-    cameraStatus.textContent = 'No pudimos acceder a tu cámara. Puedes escribir quién eres abajo.';
-    $('typeInsteadRow').hidden = false;
+    cameraStatus.textContent = 'No pudimos acceder a tu cámara. Revisa los permisos e intenta de nuevo.';
     return false;
   }
 }
 
 let detectionLoopHandle = null;
+let recognitionAttemptStart = null;
+const RECOGNITION_WINDOW_MS = 5000; // tiempo máximo intentando reconocer antes de preguntar por voz
 
 function stopDetectionLoop() {
   if (detectionLoopHandle) {
@@ -176,7 +203,9 @@ function stopDetectionLoop() {
 }
 
 // Bucle de detección: revisa cada 600ms si hay un rostro frente a la cámara,
-// e intenta reconocerlo si hay fotos de referencia cargadas.
+// e intenta reconocerlo si hay fotos de referencia cargadas. Le da hasta
+// RECOGNITION_WINDOW_MS (3 segundos) de intentos antes de rendirse y pasar
+// a preguntar "¿quién eres tú?" por voz.
 function runDetectionLoop() {
   if (!state.modelsReady) {
     // Sin modelos disponibles (ej. sin red), asumimos presencia tras un breve retraso
@@ -208,14 +237,29 @@ function runDetectionLoop() {
 
       if (result) {
         if (recognitionReady && result.descriptor && faceMatcher) {
+          if (recognitionAttemptStart === null) recognitionAttemptStart = Date.now();
+
           const match = faceMatcher.findBestMatch(result.descriptor);
           if (match.label !== 'unknown') {
+            recognitionAttemptStart = null;
             onPersonRecognized(match.label);
             return;
           }
+
+          const elapsed = Date.now() - recognitionAttemptStart;
+          if (elapsed >= RECOGNITION_WINDOW_MS) {
+            // 3 segundos intentando y no coincidió con nadie: preguntamos por voz.
+            recognitionAttemptStart = null;
+            onPersonDetected();
+            return;
+          }
+          // Todavía dentro de la ventana de 3s: seguimos intentando reconocer.
+        } else {
+          onPersonDetected(); // sin fotos de referencia cargadas: directo a la pregunta por voz
+          return;
         }
-        onPersonDetected(); // no se reconoció: seguimos con la pregunta por voz
-        return;
+      } else {
+        recognitionAttemptStart = null; // no hay rostro en este momento, reinicia el conteo
       }
     } catch (err) {
       // Silencioso: seguimos intentando
@@ -225,17 +269,29 @@ function runDetectionLoop() {
   tick();
 }
 
-// Se reconoció el rostro contra una foto de referencia: saltamos directo
-// al mensaje personalizado, sin preguntar quién es.
-function onPersonRecognized(category) {
+// Se reconoció el rostro contra la foto de referencia de una persona
+// específica: saltamos directo al mensaje personalizado, mencionando su
+// nombre real en el saludo, sin preguntar quién es.
+function onPersonRecognized(personId) {
   if (state.faceDetected) return;
   state.faceDetected = true;
   cameraStatus.textContent = '¡Ya sé quién eres!';
+
+  const person = PEOPLE.find((p) => p.id === personId);
+  const category = person ? person.category : 'familiar';
+  const name = person ? person.name : '';
+  const relation = RELATION_LABEL[category] || '';
+
   const entry = MESSAGES[category] || MESSAGES.familiar;
   const message = randomFrom(entry.options);
-  const voterName = CATEGORY_DISPLAY_LABEL[category] || entry.label;
+  const voterName = relation && name ? `${capitalize(relation)} ${name}` : categoryDisplayName(category);
   state.currentFamiliar = { category, label: entry.label, kicker: entry.kicker, message, voterName };
-  babySpeak('¡Hola! Ya sé quién eres.', () => {
+
+  // Saludo variado que menciona el parentesco y el nombre real de esa
+  // persona (ej. "¡Ah, mi tía Brenda! Ya me habían contado de ti.").
+  const greeting = buildGreeting(relation, name);
+
+  babySpeak(greeting, () => {
     showMessageScreen();
   });
 }
@@ -350,9 +406,8 @@ function startListeningForIdentity() {
   const SpeechRecognitionClass = window.SpeechRecognition || window.webkitSpeechRecognition;
 
   if (!SpeechRecognitionClass) {
-    // Sin soporte de reconocimiento de voz: invita a escribir la respuesta.
-    cameraStatus.textContent = 'Tu navegador no soporta reconocimiento de voz. Escribe abajo quién eres.';
-    $('typeInsteadRow').hidden = false;
+    // Sin soporte de reconocimiento de voz en este navegador.
+    cameraStatus.textContent = 'Tu navegador no soporta reconocimiento de voz. Prueba con Chrome.';
     return;
   }
 
@@ -402,26 +457,6 @@ function retryQuestion() {
   babySpeak('¿Quién eres tú?', () => {
     if (state.awaitingAnswer) startListeningForIdentity();
   });
-}
-
-// Entrada manual alternativa (accesibilidad / sin micrófono).
-$('btnTypeInstead').addEventListener('click', () => {
-  $('typeInsteadRow').hidden = false;
-  $('typeInsteadInput').focus();
-});
-
-$('btnTypeInsteadSend').addEventListener('click', submitTypedIdentity);
-$('typeInsteadInput').addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') submitTypedIdentity();
-});
-
-function submitTypedIdentity() {
-  const val = $('typeInsteadInput').value.trim();
-  if (!val) return;
-  clearTimeout(state.retryTimer);
-  state.awaitingAnswer = false;
-  if (state.recognition) { try { state.recognition.stop(); } catch (e) {} }
-  handleIdentityAnswer(val);
 }
 
 /* ---------------------------------------------------------------------
@@ -504,24 +539,72 @@ const MESSAGES = {
   },
 };
 
-// Nombres de respaldo para mostrar en la votación cuando no se logra
-// extraer un nombre propio de lo que la persona dijo o escribió.
-const CATEGORY_DISPLAY_LABEL = {
-  papa: 'Papá Edras',
-  mama: 'Mamá',
-  abuela: 'Abuela',
-  abuelo: 'Abuelo',
-  tia: 'Tía',
-  tio: 'Tío',
-  prima: 'Prima',
-  primo: 'Primo',
-  familiar: 'Invitado',
+// ---------------------------------------------------------------------
+// Cómo se dice cada parentesco en una frase hablada (en minúsculas).
+// Los nombres reales de cada persona ya están en PEOPLE, más arriba.
+// ---------------------------------------------------------------------
+const RELATION_LABEL = {
+  papa: 'papá',
+  mama: 'mamá',
+  abuela: 'abuela',
+  abuelo: 'abuelo',
+  tia: 'tía',
+  tio: 'tío',
+  prima: 'prima',
+  primo: 'primo',
+  familiar: '',
 };
 
-// Intenta sacar un nombre propio de frases como "Soy su tía Marcela"
-// (quedaría "Marcela"). Si no encuentra nada usable, usa un nombre de
-// respaldo según la categoría (ej. "Tía").
-function extractDisplayName(rawText, category) {
+function capitalize(text) {
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+// Si solo hay UNA persona registrada en esa categoría (ej. un solo "papá"),
+// se puede usar su nombre como respaldo aunque no se haya reconocido por
+// cámara (ej. alguien que solo dice "soy papá" por voz, sin decir su nombre).
+// Si hay varias (ej. tres abuelas), no se puede adivinar cuál, así que no
+// se pone nombre.
+function defaultNameForCategory(category) {
+  const matches = PEOPLE.filter((p) => p.category === category && p.name);
+  return matches.length === 1 ? matches[0].name : '';
+}
+
+// Nombre a mostrar al votar para esta categoría (ej. "Papá Edras", "Tía").
+function categoryDisplayName(category) {
+  const relation = RELATION_LABEL[category] || '';
+  const name = defaultNameForCategory(category);
+  if (relation && name) return `${capitalize(relation)} ${name}`;
+  if (relation) return capitalize(relation);
+  return 'Invitado';
+}
+
+// Frases variadas para saludar cuando ya se sabe el parentesco (y, si se
+// pudo, el nombre real). Se elige una al azar cada vez, para que no suene
+// siempre igual.
+const GREETING_TEMPLATES_WITH_NAME = [
+  '¡Ah, mi {relation} {name}! Ya me habían contado de ti.',
+  '¡{name}! Ya sé quién eres, mi {relation}.',
+  'Mi {relation} {name}, qué alegría escuchar tu voz.',
+  '¡Ya sé de ti, {relation} {name}!',
+  '¡Hola, {relation} {name}! Ya te esperaba.',
+];
+
+const GREETING_TEMPLATES_NO_NAME = [
+  '¡Hola! Ya sé que eres mi {relation}.',
+  '¡Ah, mi {relation}! Qué alegría escucharte.',
+  '¡Hola, {relation}! Ya me habían hablado de ti.',
+];
+
+function buildGreeting(relation, name) {
+  if (!relation) return '¡Hola! Mucho gusto conocerte.';
+  const templates = name ? GREETING_TEMPLATES_WITH_NAME : GREETING_TEMPLATES_NO_NAME;
+  const template = randomFrom(templates);
+  return template.replace('{relation}', relation).replace('{name}', name || '');
+}
+
+// Intenta sacar solo el nombre propio de frases como "Soy su tía Marcela"
+// (quedaría "Marcela"). Si no encuentra nada usable, devuelve cadena vacía.
+function extractRawName(rawText) {
   const cleaned = (rawText || '')
     .replace(/^\s*(soy|es)\s+/i, '')
     .replace(/^\s*(su|el|la|los|las)\s+/i, '')
@@ -531,7 +614,7 @@ function extractDisplayName(rawText, category) {
   if (cleaned.length > 1 && cleaned.length < 40) {
     return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
   }
-  return CATEGORY_DISPLAY_LABEL[category] || 'Invitado';
+  return '';
 }
 
 // Reglas de clasificación por palabras clave (orden importa: más específico primero).
@@ -565,14 +648,24 @@ function classifyIdentity(rawText) {
   return 'familiar';
 }
 
+// Cuando la persona responde por voz (ej. "Soy su tía Brenda"): saca su
+// nombre si lo dijo, saluda mencionándolo, y luego pasa al mensaje.
 function handleIdentityAnswer(rawText) {
   state.awaitingAnswer = false;
   const category = classifyIdentity(rawText);
   const entry = MESSAGES[category];
   const message = randomFrom(entry.options);
-  const voterName = extractDisplayName(rawText, category);
+  const relation = RELATION_LABEL[category] || '';
+  const rawName = extractRawName(rawText);
+  const name = rawName || defaultNameForCategory(category);
+  const voterName = relation && name ? `${capitalize(relation)} ${name}` : categoryDisplayName(category);
+
   state.currentFamiliar = { category, label: entry.label, kicker: entry.kicker, message, voterName };
-  showMessageScreen();
+
+  const greeting = buildGreeting(relation, name);
+  babySpeak(greeting, () => {
+    showMessageScreen();
+  });
 }
 
 /* ---------------------------------------------------------------------
@@ -681,9 +774,8 @@ function restartForNextPerson() {
   state.faceDetected = false;
   state.selectedVote = null;
   state.currentFamiliar = null;
+  recognitionAttemptStart = null;
   voteOptions.forEach((b) => b.classList.remove('is-selected'));
-  $('typeInsteadInput').value = '';
-  $('typeInsteadRow').hidden = true;
   cameraStatus.textContent = 'Buscando a alguien frente a la cámara…';
   showScreen('camera');
   runDetectionLoop();

@@ -489,6 +489,16 @@ button {
   margin-bottom: 6px;
 }
 
+.vote-voter-name {
+  font-size: 0.95rem;
+  color: var(--ink-soft);
+  margin: 4px 0 18px;
+}
+.vote-voter-name strong {
+  color: var(--ink);
+  font-family: var(--font-display);
+}
+
 /* --- Sorpresa final --- */
 .surprise-card { position: relative; overflow: hidden; }
 .surprise-emoji { font-size: 3.4rem; margin-bottom: 6px; }
