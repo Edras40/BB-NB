@@ -341,9 +341,6 @@ function narratorSpeak(text, onEnd) {
   window.speechSynthesis.speak(utter);
 }
 
-const WELCOME_NARRATION =
-  '¡Estamos a punto de conocernos! Acércate a la cámara, dile quién eres, y descubre un mensaje especial antes de votar si crees que será niño o niña.';
-
 function startListeningForIdentity() {
   state.awaitingAnswer = true;
   listeningPulse.classList.add('is-on');
@@ -582,7 +579,6 @@ function handleIdentityAnswer(rawText) {
    7. FLUJO DE PANTALLAS
    --------------------------------------------------------------------- */
 const screens = {
-  welcome: $('screenWelcome'),
   camera: $('screenCamera'),
   message: $('screenMessage'),
   transition: $('screenTransition'),
@@ -595,18 +591,18 @@ function showScreen(name) {
   screens[name].classList.add('is-active');
 }
 
-// --- Pantalla 0 -> 1: iniciar experiencia, todo automático ---
-// La cámara aparece de inmediato; el audio de bienvenida suena al mismo
-// tiempo, mientras la cámara ya está buscando/reconociendo un rostro
-// (no se espera a que termine el audio para mostrarla).
-let welcomeStarted = false;
+// --- Iniciar cámara y detección ---
+// La cámara ya se ve desde el primer momento (es la pantalla activa por
+// defecto en el HTML). Pero el permiso de cámara/micrófono en el celular
+// solo lo conceden los navegadores si hay un toque real de la persona justo
+// antes — no es algo que se pueda evitar desde el código. Por eso esperamos
+// el primer toque/clic en cualquier parte de la pantalla (no un botón
+// concreto, cualquier toque cuenta) para pedir el permiso ahí mismo.
+let cameraStarted = false;
 
-function startWelcomeFlow() {
-  if (welcomeStarted) return;
-  welcomeStarted = true;
-
-  showScreen('camera');
-  narratorSpeak(WELCOME_NARRATION); // suena en paralelo, no bloquea nada
+function startCameraFlow() {
+  if (cameraStarted) return;
+  cameraStarted = true;
 
   (async () => {
     // Cargamos los modelos (incluye reconocimiento facial, si hay fotos) en
@@ -616,16 +612,9 @@ function startWelcomeFlow() {
   })();
 }
 
-window.addEventListener('DOMContentLoaded', () => {
-  setTimeout(startWelcomeFlow, 300);
-});
-
-// Algunos navegadores (sobre todo en celular) bloquean el audio automático
-// hasta el primer toque en la pantalla. Este respaldo silencioso lo dispara
-// con el primer toque/clic/tecla, sin necesitar un botón visible.
-document.addEventListener('click', startWelcomeFlow, { once: true });
-document.addEventListener('keydown', startWelcomeFlow, { once: true });
-document.addEventListener('touchstart', startWelcomeFlow, { once: true });
+document.addEventListener('click', startCameraFlow, { once: true });
+document.addEventListener('keydown', startCameraFlow, { once: true });
+document.addEventListener('touchstart', startCameraFlow, { once: true });
 
 // --- Pantalla 2: mensaje personalizado ---
 function showMessageScreen() {

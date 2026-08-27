@@ -49,21 +49,8 @@
     <!-- ============================================================ -->
     <section id="tabExperience" class="tab-panel is-active" role="tabpanel" aria-labelledby="tabBtnExperience">
 
-      <!-- ---------- PANTALLA 0: BIENVENIDA ---------- -->
-      <div class="screen is-active" id="screenWelcome" data-screen>
-        <div class="glass-card welcome-card">
-          <div class="welcome-icon">👶</div>
-          <h1 class="display-title">¡Estamos a punto de conocernos!</h1>
-          <p class="body-text">
-            Acércate a la cámara, dile quién eres y descubre un mensaje especial
-            antes de votar si crees que será niño o niña.
-          </p>
-          <p class="fineprint" id="permissionHint">Necesitaremos permiso para usar tu cámara y micrófono.</p>
-        </div>
-      </div>
-
-      <!-- ---------- PANTALLA 1: CÁMARA / DETECCIÓN ---------- -->
-      <div class="screen" id="screenCamera" data-screen>
+      <!-- ---------- PANTALLA 1: CÁMARA / DETECCIÓN (primera pantalla, sin bienvenida previa) ---------- -->
+      <div class="screen is-active" id="screenCamera" data-screen>
         <div class="glass-card camera-card">
           <div class="camera-frame">
             <video id="video" autoplay muted playsinline></video>
