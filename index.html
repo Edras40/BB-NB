@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+<title>¿Niño o Niña? — Revelación de Género</title>
+
+<!-- Google Fonts: Baloo 2 (display, redondeada, cálida) + Quicksand (texto, suave) -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;700;800&family=Quicksand:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <!-- ============================================================ -->
+  <!-- FONDO: mitad rosa / mitad azul + signo de interrogación gigante -->
+  <!-- ============================================================ -->
+  <div class="stage-bg" aria-hidden="true">
+    <div class="half half-pink"></div>
+    <div class="half half-blue"></div>
+    <div class="giant-mark" id="giantMark">?</div>
+    <div class="floating-icons" id="floatingIcons"></div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- NAV DE PESTAÑAS -->
+  <!-- ============================================================ -->
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-icon">🍼</span>
+      <span class="brand-text">¿Niño o Niña?</span>
+    </div>
+    <nav class="tabs" role="tablist" aria-label="Secciones">
+      <button class="tab-btn is-active" id="tabBtnExperience" role="tab" aria-selected="true" aria-controls="tabExperience">
+        Experiencia
+      </button>
+      <button class="tab-btn" id="tabBtnStats" role="tab" aria-selected="false" aria-controls="tabStats">
+        Estadísticas
+      </button>
+    </nav>
+  </header>
+
+  <main class="app-main">
+
+    <!-- ============================================================ -->
+    <!-- TAB 1: EXPERIENCIA INTERACTIVA -->
+    <!-- ============================================================ -->
+    <section id="tabExperience" class="tab-panel is-active" role="tabpanel" aria-labelledby="tabBtnExperience">
+
+      <!-- ---------- PANTALLA 0: BIENVENIDA ---------- -->
+      <div class="screen is-active" id="screenWelcome" data-screen>
+        <div class="glass-card welcome-card">
+          <div class="welcome-icon">👶</div>
+          <h1 class="display-title">¡Estamos a punto de conocernos!</h1>
+          <p class="body-text">
+            Acércate a la cámara, dile quién eres y descubre un mensaje especial
+            antes de votar si crees que será niño o niña.
+          </p>
+          <button class="btn btn-primary" id="btnStart">
+            <span class="btn-icon">📷</span> Comenzar experiencia
+          </button>
+          <button class="btn btn-ghost" id="btnReplayNarration">🔊 Escuchar de nuevo</button>
+          <p class="fineprint" id="permissionHint">Necesitaremos permiso para usar tu cámara y micrófono.</p>
+        </div>
+      </div>
+
+      <!-- ---------- PANTALLA 1: CÁMARA / DETECCIÓN ---------- -->
+      <div class="screen" id="screenCamera" data-screen>
+        <div class="glass-card camera-card">
+          <div class="camera-frame">
+            <video id="video" autoplay muted playsinline></video>
+            <canvas id="overlay"></canvas>
+            <div class="listening-pulse" id="listeningPulse" aria-hidden="true"></div>
+            <div class="camera-status" id="cameraStatus">Buscando a alguien frente a la cámara…</div>
+          </div>
+
+          <div class="voice-bubble" id="voiceBubble" aria-live="polite">
+            <span class="voice-bubble-icon">💬</span>
+            <span id="voiceBubbleText">Hola, ¿quién eres tú?</span>
+          </div>
+
+          <div class="mic-indicator" id="micIndicator">
+            <span class="mic-dot"></span> Escuchando…
+          </div>
+
+          <div class="heard-text" id="heardText" aria-live="polite"></div>
+
+          <button class="btn btn-ghost" id="btnTypeInstead">Prefiero escribirlo</button>
+          <div class="type-instead-row" id="typeInsteadRow" hidden>
+            <input type="text" id="typeInsteadInput" placeholder="Ej: Soy su tía Marcela" class="text-input">
+            <button class="btn btn-secondary" id="btnTypeInsteadSend">Enviar</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ---------- PANTALLA 2: MENSAJE PERSONALIZADO ---------- -->
+      <div class="screen" id="screenMessage" data-screen>
+        <div class="glass-card message-card">
+          <div class="baby-avatar">👶</div>
+          <p class="message-kicker" id="messageKicker">Para ti, tía</p>
+          <p class="message-text" id="messageText">Tía, gracias por ser parte de mi familia.</p>
+          <button class="btn btn-primary" id="btnToVote">Continuar</button>
+        </div>
+      </div>
+
+      <!-- ---------- PANTALLA 3: TRANSICIÓN "ES TIEMPO DE VOTAR" ---------- -->
+      <div class="screen" id="screenTransition" data-screen>
+        <div class="transition-content">
+          <div class="transition-emoji">🎉</div>
+          <h2 class="transition-title">¡Es tiempo de votar!</h2>
+        </div>
+      </div>
+
+      <!-- ---------- PANTALLA 4: FORMULARIO DE VOTO ---------- -->
+      <div class="screen" id="screenVote" data-screen>
+        <div class="glass-card vote-card">
+          <h2 class="vote-title">¿Qué crees que será?</h2>
+          <div class="vote-options">
+            <button class="vote-option" data-vote="nina">
+              <span class="vote-emoji">👶</span>
+              <span class="vote-label">Niña</span>
+            </button>
+            <button class="vote-option" data-vote="nino">
+              <span class="vote-emoji">👶</span>
+              <span class="vote-label">Niño</span>
+            </button>
+          </div>
+          <label class="field-label" for="voterName">Tu nombre</label>
+          <input type="text" id="voterName" class="text-input" placeholder="Escribe tu nombre">
+          <button class="btn btn-primary btn-wide" id="btnSubmitVote">Enviar voto</button>
+          <p class="fineprint" id="voteError" role="alert"></p>
+        </div>
+      </div>
+
+      <!-- ---------- PANTALLA 5: SORPRESA / AGRADECIMIENTO ---------- -->
+      <div class="screen" id="screenSurprise" data-screen>
+        <div class="glass-card surprise-card">
+          <div class="surprise-confetti" id="surpriseConfetti" aria-hidden="true"></div>
+          <div class="surprise-emoji">🎊</div>
+          <h2 class="display-title">¡Gracias por votar!</h2>
+          <p class="body-text">Tu voto quedó guardado. Muy pronto, en la fiesta, sabremos si acerté… ¡o si me llevé una sorpresa!</p>
+          <button class="btn btn-secondary" id="btnVoteAgainInfo">Ver estadísticas</button>
+          <button class="btn btn-ghost" id="btnRestart">Otra persona quiere participar</button>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ============================================================ -->
+    <!-- TAB 2: ESTADÍSTICAS -->
+    <!-- ============================================================ -->
+    <section id="tabStats" class="tab-panel" role="tabpanel" aria-labelledby="tabBtnStats" hidden>
+      <div class="stats-grid">
+
+        <div class="glass-card stat-summary-card">
+          <div class="stat-number" id="statTotal">0</div>
+          <div class="stat-label">Votos totales</div>
+        </div>
+
+        <div class="glass-card stat-summary-card stat-pink">
+          <div class="stat-number" id="statNinaCount">0</div>
+          <div class="stat-label">Votos por Niña</div>
+          <div class="stat-percent" id="statNinaPercent">0%</div>
+        </div>
+
+        <div class="glass-card stat-summary-card stat-blue">
+          <div class="stat-number" id="statNinoCount">0</div>
+          <div class="stat-label">Votos por Niño</div>
+          <div class="stat-percent" id="statNinoPercent">0%</div>
+        </div>
+
+        <div class="glass-card chart-card">
+          <h3 class="chart-title">Distribución de votos</h3>
+          <canvas id="pieChart"></canvas>
+        </div>
+
+        <div class="glass-card chart-card">
+          <h3 class="chart-title">Comparación total</h3>
+          <canvas id="barChart"></canvas>
+        </div>
+
+        <div class="glass-card timeline-card">
+          <h3 class="chart-title">Participantes</h3>
+          <ul class="timeline-list" id="timelineList">
+            <li class="timeline-empty">Aún no hay votos registrados.</li>
+          </ul>
+        </div>
+
+        <div class="glass-card reset-card">
+          <button class="btn btn-ghost" id="btnResetVotes">Reiniciar todos los votos</button>
+        </div>
+
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ============================================================ -->
+  <!-- DEPENDENCIAS EXTERNAS -->
+  <!-- ============================================================ -->
+  <!-- face-api.js: detección facial en el navegador -->
+  <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+  <!-- Chart.js: gráficos de pastel y barras -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+  <!-- supabase-js: base de datos compartida en la nube (sincroniza celular <-> TV) -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="supabase-config.js"></script>
+
+  <script src="script.js"></script>
+</body>
+</html>

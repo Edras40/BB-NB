@@ -1,0 +1,175 @@
+/* =====================================================================
+   ESTILOS PARA LA PANTALLA DE TV (plasma)
+   Se apoya en las variables y tarjetas de cristal de styles.css, pero
+   escala todo para verse claro a varios metros de distancia.
+   ===================================================================== */
+
+.tv-body {
+  overflow: hidden; /* la TV no hace scroll, todo debe caber en pantalla */
+  height: 100vh;
+}
+
+.tv-header {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 28px 48px 8px;
+}
+
+.tv-brand-icon { font-size: 2.6rem; }
+
+.tv-title {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 2.6rem;
+  margin: 0;
+  color: var(--ink);
+}
+
+.tv-live-dot {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #4CAF7D;
+  box-shadow: 0 0 0 0 rgba(76, 175, 125, 0.6);
+  animation: tv-live-pulse 1.6s ease-out infinite;
+  margin-left: auto;
+  margin-right: 12px;
+}
+
+@keyframes tv-live-pulse {
+  0%   { box-shadow: 0 0 0 0 rgba(76, 175, 125, 0.55); }
+  100% { box-shadow: 0 0 0 18px rgba(76, 175, 125, 0); }
+}
+
+.tv-grid {
+  display: grid;
+  grid-template-columns: 1.1fr 1.3fr 1fr;
+  gap: 24px;
+  padding: 12px 48px 40px;
+  height: calc(100vh - 100px);
+}
+
+.tv-col {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-height: 0;
+}
+
+/* --- Columna de números --- */
+.tv-total-card, .tv-pct-card {
+  max-width: none;
+  padding: 22px 20px;
+}
+
+.tv-total-number {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 4.2rem;
+  color: var(--ink);
+  line-height: 1;
+}
+.tv-total-label {
+  font-size: 1.2rem;
+  color: var(--ink-soft);
+  margin-top: 6px;
+}
+
+.tv-pct-card {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+.tv-pct-emoji { font-size: 2.4rem; }
+.tv-pct-value {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 3.4rem;
+  line-height: 1.1;
+}
+.tv-pct-nina .tv-pct-value { color: #d9508a; }
+.tv-pct-nino .tv-pct-value { color: #3f9fd4; }
+.tv-pct-label {
+  font-size: 1.15rem;
+  color: var(--ink-soft);
+  margin-top: 4px;
+}
+
+/* --- Columna de gráficos --- */
+.tv-col-charts { min-height: 0; }
+.tv-chart-card {
+  max-width: none;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+.tv-chart-card canvas { max-height: 100%; }
+
+/* --- Columna de línea de tiempo --- */
+.tv-timeline-card {
+  max-width: none;
+  flex: 1;
+  min-height: 0;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+}
+.tv-timeline-title {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 1.6rem;
+  margin: 0 0 14px;
+}
+.tv-timeline-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 1;
+}
+.tv-timeline-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 18px;
+  border-radius: 14px;
+  background: rgba(255,255,255,0.65);
+  font-size: 1.25rem;
+  font-weight: 600;
+  animation: tv-row-in 0.4s ease;
+}
+@keyframes tv-row-in {
+  from { opacity: 0; transform: translateX(12px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+.tv-timeline-list .timeline-badge {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 1rem;
+  padding: 6px 14px;
+  border-radius: 999px;
+}
+.tv-timeline-list .timeline-badge.nina { background: var(--pink); color: #a83b74; }
+.tv-timeline-list .timeline-badge.nino { background: var(--blue); color: #2b7ba8; }
+.tv-timeline-list .timeline-empty {
+  justify-content: center;
+  color: var(--ink-soft);
+  font-style: italic;
+  font-weight: 400;
+  font-size: 1.15rem;
+}
+
+@media (max-width: 1200px) {
+  .tv-grid { grid-template-columns: 1fr; height: auto; overflow-y: auto; }
+  .tv-body { overflow-y: auto; height: auto; }
+}

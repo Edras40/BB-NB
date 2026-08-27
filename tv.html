@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>¿Niño o Niña? — Estadísticas en vivo</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;700;800&family=Quicksand:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="tv.css">
+</head>
+<body class="tv-body">
+
+  <!-- Mismo fondo escenográfico que la experiencia del celular, para mantener la identidad visual -->
+  <div class="stage-bg" aria-hidden="true">
+    <div class="half half-pink"></div>
+    <div class="half half-blue"></div>
+    <div class="giant-mark">?</div>
+  </div>
+
+  <header class="tv-header">
+    <span class="tv-brand-icon">🍼</span>
+    <h1 class="tv-title">¿Niño o Niña?</h1>
+    <span class="tv-live-dot" id="tvLiveDot" title="Actualización en vivo"></span>
+  </header>
+
+  <main class="tv-grid">
+
+    <section class="tv-col tv-col-numbers">
+      <div class="glass-card tv-total-card">
+        <div class="tv-total-number" id="tvTotal">0</div>
+        <div class="tv-total-label">votos registrados</div>
+      </div>
+
+      <div class="glass-card tv-pct-card tv-pct-nina">
+        <div class="tv-pct-emoji">👶</div>
+        <div class="tv-pct-value" id="tvNinaPercent">0%</div>
+        <div class="tv-pct-label">Niña · <span id="tvNinaCount">0</span> votos</div>
+      </div>
+
+      <div class="glass-card tv-pct-card tv-pct-nino">
+        <div class="tv-pct-emoji">👶</div>
+        <div class="tv-pct-value" id="tvNinoPercent">0%</div>
+        <div class="tv-pct-label">Niño · <span id="tvNinoCount">0</span> votos</div>
+      </div>
+    </section>
+
+    <section class="tv-col tv-col-charts">
+      <div class="glass-card tv-chart-card">
+        <canvas id="tvPieChart"></canvas>
+      </div>
+      <div class="glass-card tv-chart-card">
+        <canvas id="tvBarChart"></canvas>
+      </div>
+    </section>
+
+    <section class="tv-col tv-col-timeline">
+      <div class="glass-card tv-timeline-card">
+        <h2 class="tv-timeline-title">Últimos en votar</h2>
+        <ul class="tv-timeline-list" id="tvTimelineList">
+          <li class="timeline-empty">Esperando el primer voto…</li>
+        </ul>
+      </div>
+    </section>
+
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="supabase-config.js"></script>
+  <script src="tv.js"></script>
+</body>
+</html>
