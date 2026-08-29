@@ -756,8 +756,15 @@ function showScreen(name) {
 // defecto en el HTML). Pero el permiso de cámara/micrófono en el celular
 // solo lo conceden los navegadores si hay un toque real de la persona justo
 // antes — no es algo que se pueda evitar desde el código. Por eso esperamos
-// el primer toque/clic en cualquier parte de la pantalla (no un botón
-// concreto, cualquier toque cuenta) para pedir el permiso ahí mismo.
+// el primer toque/clic en cualquier parte de la pantalla para pedir el
+// permiso ahí mismo.
+//
+// Usamos solo el evento "click" (no "touchstart"): en algunos celulares,
+// "touchstart" se dispara apenas se toca la pantalla, antes de que el toque
+// se considere "completo", y el navegador no lo cuenta como válido para dar
+// permiso de cámara — eso hacía que el primer toque fallara en silencio y
+// hubiera que tocar dos veces. "click" siempre se dispara después del toque
+// completo, en cualquier celular.
 let cameraStarted = false;
 
 function startCameraFlow() {
@@ -772,13 +779,16 @@ function startCameraFlow() {
     if (ok) {
       runDetectionLoop();
       startRecordingForCurrentPerson(); // empieza a grabar el recuerdo de esta persona
+    } else {
+      // Falló (permiso denegado, cámara ocupada, etc.): permitimos
+      // reintentar con un toque más, en vez de quedar bloqueado para siempre.
+      cameraStarted = false;
     }
   })();
 }
 
-document.addEventListener('click', startCameraFlow, { once: true });
-document.addEventListener('keydown', startCameraFlow, { once: true });
-document.addEventListener('touchstart', startCameraFlow, { once: true });
+document.addEventListener('click', startCameraFlow);
+document.addEventListener('keydown', startCameraFlow);
 
 // --- Pantalla 2: mensaje personalizado ---
 function showMessageScreen() {
