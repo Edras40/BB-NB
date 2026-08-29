@@ -92,6 +92,19 @@ async function loadFaceModels() {
   }
 }
 
+// Empieza a descargar el modelo de detección desde que carga la página
+// (no hasta que alguien toque la pantalla), para que ya esté listo y no
+// se sienta demora al momento de activar la cámara. Si se llama más de
+// una vez, reutiliza la misma descarga en vez de repetirla.
+let faceModelsPromise = null;
+function ensureFaceModelsLoaded() {
+  if (!faceModelsPromise) {
+    faceModelsPromise = loadFaceModels();
+  }
+  return faceModelsPromise;
+}
+ensureFaceModelsLoaded();
+
 async function startCamera() {
   try {
     // audio:true además de video, para poder grabar también la voz de la
@@ -729,9 +742,10 @@ function startCameraFlow() {
   cameraStarted = true;
 
   (async () => {
-    // Cargamos los modelos (incluye reconocimiento facial, si hay fotos) en
-    // paralelo con el permiso/inicio de cámara, para no sumar esperas.
-    const [, ok] = await Promise.all([loadFaceModels(), startCamera()]);
+    // Los modelos ya empezaron a cargar desde que abrió la página
+    // (ensureFaceModelsLoaded); aquí solo esperamos a que terminen (si
+    // acaso no habían terminado) en paralelo con el permiso de cámara.
+    const [, ok] = await Promise.all([ensureFaceModelsLoaded(), startCamera()]);
     if (ok) {
       runDetectionLoop();
       startRecordingForCurrentPerson(); // empieza a grabar el recuerdo de esta persona
