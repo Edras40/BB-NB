@@ -282,8 +282,25 @@ function babySpeak(text, onEnd) {
   window.speechSynthesis.speak(utter);
 }
 
+// Audios grabados para la pregunta inicial (aún no subidos). En cuanto
+// existan, la app los usa; si faltan, sigue con la voz del navegador.
+const AUDIO_QUESTION_GREET = 'assets/audio/pregunta-1.mp3'; // "Hola, ¿quién eres tú?"
+const AUDIO_QUESTION_RETRY = 'assets/audio/pregunta-2.mp3'; // "¿Quién eres tú?"
+
+// Reproduce un audio real si existe; si falla (no existe todavía, error de
+// red, etc.), usa la voz del navegador con el mismo texto como respaldo.
+function speakOrPlay(text, audioUrl, onEnd) {
+  voiceBubbleText.textContent = text;
+  voiceBubble.classList.add('is-active');
+
+  const audio = new Audio(audioUrl);
+  audio.onended = () => { if (onEnd) onEnd(); };
+  audio.onerror = () => babySpeak(text, onEnd);
+  audio.play().catch(() => babySpeak(text, onEnd));
+}
+
 function greetAndListen() {
-  babySpeak('Hola, ¿quién eres tú?', () => {
+  speakOrPlay('Hola, ¿quién eres tú?', AUDIO_QUESTION_GREET, () => {
     startListeningForIdentity();
   });
 }
@@ -388,7 +405,7 @@ function startListeningForIdentity() {
 
 function retryQuestion() {
   if (!state.awaitingAnswer) return; // ya se resolvió mientras tanto
-  babySpeak('¿Quién eres tú?', () => {
+  speakOrPlay('¿Quién eres tú?', AUDIO_QUESTION_RETRY, () => {
     if (state.awaitingAnswer) startListeningForIdentity();
   });
 }
