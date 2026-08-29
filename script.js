@@ -718,8 +718,14 @@ function handleIdentityAnswer(rawText) {
   const category = classifyIdentity(rawText);
   const { entry, message, audioUrl } = pickMessage(category);
   const relation = RELATION_LABEL[category] || '';
+  // Para categorías con una sola persona conocida (papá/mamá), usamos
+  // siempre su nombre real, ignorando lo que el reconocimiento de voz
+  // haya entendido (a veces transcribe mal, ej. "Edras" → "Edson"). Para
+  // las demás categorías (varias personas posibles), sí usamos lo que la
+  // persona dijo, porque no hay un nombre único que asumir.
   const rawName = extractRawName(rawText);
-  const name = rawName || defaultNameForCategory(category);
+  const knownName = defaultNameForCategory(category);
+  const name = knownName || rawName;
   const voterName = relation && name ? `${capitalize(relation)} ${name}` : categoryDisplayName(category);
 
   state.currentFamiliar = { category, label: entry.label, kicker: entry.kicker, message, audioUrl, voterName };
