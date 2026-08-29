@@ -82,75 +82,6 @@ const listeningPulse = $('listeningPulse');
 // Modelos públicos de face-api.js (alojados por su autor para demos).
 const MODEL_URL = 'https://justadudewhohacks.github.io/face-api.js/models';
 
-// --- Reconocimiento facial opcional ---
-// Cada PERSONA (no cada categoría) tiene su propia carpeta de fotos en
-// /assets/faces/<id>/fotoN.jpg — así se puede distinguir, por ejemplo,
-// entre "Abuela María" y "Abuela Rosa". Si en la carpeta de alguien hay
-// fotos, la app intenta reconocerla por su rostro y salta directo al
-// mensaje personalizado. Si no hay fotos, o el rostro no coincide con
-// nadie, se sigue preguntando "¿quién eres tú?" como siempre.
-//
-// EDITA ESTA LISTA para agregar, quitar o renombrar personas. El "id" debe
-// coincidir exactamente con el nombre de su carpeta en assets/faces/.
-const PEOPLE = [
-  { id: 'papa', category: 'papa', name: 'Edras' },
-  { id: 'mama', category: 'mama', name: 'Nazareth' },
-  { id: 'abuela_maria', category: 'abuela', name: 'María' },
-  { id: 'abuela_maricela', category: 'abuela', name: 'Maricela' },
-  { id: 'abuela_rosa', category: 'abuela', name: 'Rosa' },
-  { id: 'abuelo', category: 'abuelo', name: '' },
-  { id: 'tia_brenda', category: 'tia', name: 'Brenda' },
-  { id: 'tia_karina', category: 'tia', name: 'Karina' },
-  { id: 'tia_nelcy', category: 'tia', name: 'Nelcy' },
-  { id: 'tia_glenda', category: 'tia', name: 'Glenda' },
-  { id: 'tio_osman', category: 'tio', name: 'Osman' },
-  { id: 'tio_juan', category: 'tio', name: 'Juan' },
-  { id: 'tio_eduardo', category: 'tio', name: 'Eduardo' },
-  { id: 'primo_abdiel', category: 'primo', name: 'Abdiel' },
-  { id: 'prima_addy', category: 'prima', name: 'Addy' },
-  { id: 'prima_amsy', category: 'prima', name: 'Amsy' },
-  { id: 'prima_kory', category: 'prima', name: 'Kory' },
-  { id: 'prima_alexandra', category: 'prima', name: 'Alexandra' },
-];
-
-const MAX_PHOTOS_PER_CATEGORY = 5;
-const PHOTO_EXTENSIONS = ['jpg', 'jpeg', 'png'];
-const FACE_MATCH_THRESHOLD = 0.5; // menor = más estricto
-
-let faceMatcher = null;
-let recognitionReady = false;
-
-// Carga (si existen) las fotos de referencia de cada persona y calcula su
-// "huella facial" individual.
-async function loadFaceEnrollment() {
-  const labeledDescriptors = [];
-
-  for (const person of PEOPLE) {
-    const descriptors = [];
-    for (let i = 1; i <= MAX_PHOTOS_PER_CATEGORY; i++) {
-      for (const ext of PHOTO_EXTENSIONS) {
-        const url = `assets/faces/${person.id}/foto${i}.${ext}`;
-        try {
-          const img = await faceapi.fetchImage(url);
-          const detection = await faceapi
-            .detectSingleFace(img, new faceapi.TinyFaceDetectorOptions())
-            .withFaceLandmarks()
-            .withFaceDescriptor();
-          if (detection) descriptors.push(detection.descriptor);
-          break; // esta foto sí existía (con esta extensión); pasamos a la siguiente
-        } catch (err) {
-          // No existe assets/faces/<id>/fotoN.<ext> — seguimos intentando.
-        }
-      }
-    }
-    if (descriptors.length) {
-      labeledDescriptors.push(new faceapi.LabeledFaceDescriptors(person.id, descriptors));
-    }
-  }
-
-  return labeledDescriptors;
-}
-
 async function loadFaceModels() {
   try {
     await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
@@ -158,26 +89,14 @@ async function loadFaceModels() {
   } catch (err) {
     console.warn('No se pudieron cargar los modelos de detección facial:', err);
     state.modelsReady = false;
-    return;
-  }
-
-  try {
-    await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL);
-    await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
-    const labeled = await loadFaceEnrollment();
-    if (labeled.length) {
-      faceMatcher = new faceapi.FaceMatcher(labeled, FACE_MATCH_THRESHOLD);
-      recognitionReady = true;
-    }
-  } catch (err) {
-    // Sin fotos de referencia o sin soporte: no pasa nada, se sigue preguntando por voz.
-    console.warn('Reconocimiento facial no disponible, se preguntará por voz:', err);
   }
 }
 
 async function startCamera() {
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+    // audio:true además de video, para poder grabar también la voz de la
+    // persona (no solo su imagen) como recuerdo descargable.
+    const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
     state.cameraStream = stream;
     video.srcObject = stream;
     await video.play();
@@ -191,9 +110,70 @@ async function startCamera() {
   }
 }
 
+/* ---------------------------------------------------------------------
+   GRABACIÓN DE RECUERDO — graba cámara + voz de la persona (no la voz
+   sintética del bebé, eso no se puede capturar) mientras interactúa, y al
+   terminar de votar descarga automáticamente el clip al celular, sin
+   subir nada a ningún servidor.
+   --------------------------------------------------------------------- */
+let mediaRecorder = null;
+let recordedChunks = [];
+
+function pickRecordingMimeType() {
+  if (typeof MediaRecorder === 'undefined') return null;
+  const candidates = ['video/webm;codecs=vp9,opus', 'video/webm', 'video/mp4'];
+  return candidates.find((type) => MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(type)) || null;
+}
+
+function startRecordingForCurrentPerson() {
+  if (!state.cameraStream || typeof MediaRecorder === 'undefined') return;
+  const mimeType = pickRecordingMimeType();
+  try {
+    recordedChunks = [];
+    mediaRecorder = mimeType
+      ? new MediaRecorder(state.cameraStream, { mimeType })
+      : new MediaRecorder(state.cameraStream);
+    mediaRecorder.ondataavailable = (e) => {
+      if (e.data && e.data.size > 0) recordedChunks.push(e.data);
+    };
+    mediaRecorder.start();
+  } catch (err) {
+    console.warn('No se pudo iniciar la grabación de recuerdo:', err);
+    mediaRecorder = null;
+  }
+}
+
+function slugify(text) {
+  return (text || 'invitado')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // quita acentos
+    .replace(/[^a-zA-Z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .toLowerCase() || 'invitado';
+}
+
+function stopRecordingAndDownload(filenameBase) {
+  if (!mediaRecorder || mediaRecorder.state === 'inactive') return;
+  const extension = (mediaRecorder.mimeType || '').includes('mp4') ? 'mp4' : 'webm';
+  mediaRecorder.onstop = () => {
+    if (!recordedChunks.length) return;
+    const blob = new Blob(recordedChunks, { type: mediaRecorder.mimeType || 'video/webm' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `voto-${slugify(filenameBase)}.${extension}`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 8000);
+  };
+  try {
+    mediaRecorder.stop();
+  } catch (err) {
+    console.warn('No se pudo finalizar la grabación de recuerdo:', err);
+  }
+}
+
 let detectionLoopHandle = null;
-let recognitionAttemptStart = null;
-const RECOGNITION_WINDOW_MS = 5000; // tiempo máximo intentando reconocer antes de preguntar por voz
 
 function stopDetectionLoop() {
   if (detectionLoopHandle) {
@@ -202,10 +182,9 @@ function stopDetectionLoop() {
   }
 }
 
-// Bucle de detección: revisa cada 600ms si hay un rostro frente a la cámara,
-// e intenta reconocerlo si hay fotos de referencia cargadas. Le da hasta
-// RECOGNITION_WINDOW_MS (3 segundos) de intentos antes de rendirse y pasar
-// a preguntar "¿quién eres tú?" por voz.
+// Bucle de detección: revisa cada 600ms si hay un rostro frente a la cámara.
+// Sin reconocimiento facial: cada vez que detecta a alguien, pregunta
+// "¿quién eres tú?" por voz.
 function runDetectionLoop() {
   if (!state.modelsReady) {
     // Sin modelos disponibles (ej. sin red), asumimos presencia tras un breve retraso
@@ -222,44 +201,13 @@ function runDetectionLoop() {
       return;
     }
     try {
-      let result;
-      if (recognitionReady) {
-        result = await faceapi
-          .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions({ inputSize: 224 }))
-          .withFaceLandmarks()
-          .withFaceDescriptor();
-      } else {
-        result = await faceapi.detectSingleFace(
-          video,
-          new faceapi.TinyFaceDetectorOptions({ inputSize: 224 })
-        );
-      }
-
+      const result = await faceapi.detectSingleFace(
+        video,
+        new faceapi.TinyFaceDetectorOptions({ inputSize: 224 })
+      );
       if (result) {
-        if (recognitionReady && result.descriptor && faceMatcher) {
-          if (recognitionAttemptStart === null) recognitionAttemptStart = Date.now();
-
-          const match = faceMatcher.findBestMatch(result.descriptor);
-          if (match.label !== 'unknown') {
-            recognitionAttemptStart = null;
-            onPersonRecognized(match.label);
-            return;
-          }
-
-          const elapsed = Date.now() - recognitionAttemptStart;
-          if (elapsed >= RECOGNITION_WINDOW_MS) {
-            // 3 segundos intentando y no coincidió con nadie: preguntamos por voz.
-            recognitionAttemptStart = null;
-            onPersonDetected();
-            return;
-          }
-          // Todavía dentro de la ventana de 3s: seguimos intentando reconocer.
-        } else {
-          onPersonDetected(); // sin fotos de referencia cargadas: directo a la pregunta por voz
-          return;
-        }
-      } else {
-        recognitionAttemptStart = null; // no hay rostro en este momento, reinicia el conteo
+        onPersonDetected();
+        return;
       }
     } catch (err) {
       // Silencioso: seguimos intentando
@@ -267,33 +215,6 @@ function runDetectionLoop() {
     detectionLoopHandle = setTimeout(tick, 600);
   };
   tick();
-}
-
-// Se reconoció el rostro contra la foto de referencia de una persona
-// específica: saltamos directo al mensaje personalizado, mencionando su
-// nombre real en el saludo, sin preguntar quién es.
-function onPersonRecognized(personId) {
-  if (state.faceDetected) return;
-  state.faceDetected = true;
-  cameraStatus.textContent = '¡Ya sé quién eres!';
-
-  const person = PEOPLE.find((p) => p.id === personId);
-  const category = person ? person.category : 'familiar';
-  const name = person ? person.name : '';
-  const relation = RELATION_LABEL[category] || '';
-
-  const entry = MESSAGES[category] || MESSAGES.familiar;
-  const message = randomFrom(entry.options);
-  const voterName = relation && name ? `${capitalize(relation)} ${name}` : categoryDisplayName(category);
-  state.currentFamiliar = { category, label: entry.label, kicker: entry.kicker, message, voterName };
-
-  // Saludo variado que menciona el parentesco y el nombre real de esa
-  // persona (ej. "¡Ah, mi tía Brenda! Ya me habían contado de ti.").
-  const greeting = buildGreeting(relation, name);
-
-  babySpeak(greeting, () => {
-    showMessageScreen();
-  });
 }
 
 function onPersonDetected() {
@@ -517,8 +438,8 @@ const MESSAGES = {
     label: 'prima',
     kicker: 'Para ti, prima',
     options: [
-      'Prima, ya quiero jugar contigo. Sé que juntas viviremos aventuras increíbles.',
-      'Gracias por esperarme con tanto cariño. Pronto compartiremos muchas risas juntas.',
+      'Prima, ya quiero jugar contigo. Sé que viviremos aventuras increíbles.',
+      'Gracias por esperarme con tanto cariño. Pronto compartiremos muchas risas.',
     ],
   },
   primo: {
@@ -540,8 +461,117 @@ const MESSAGES = {
 };
 
 // ---------------------------------------------------------------------
+// AUDIOS REALES (grabados con ElevenLabs + Audacity) para los mensajes de
+// arriba. El orden de cada lista debe coincidir con el orden de "options"
+// en MESSAGES (la opción 1 de MESSAGES.papa usa el audio en la posición 0
+// de aquí, la opción 2 usa la posición 1, etc.). Si falta un audio para
+// una categoría, o para una opción específica, esa opción simplemente usa
+// la voz del navegador como respaldo — no rompe nada.
+const MESSAGE_AUDIO = {
+  papa: ['assets/audio/papa-1.mp3', 'assets/audio/papa-2.mp3', 'assets/audio/papa-3.mp3'],
+  mama: ['assets/audio/mama-1.mp3', 'assets/audio/mama-2.mp3', 'assets/audio/mama-3.mp3'],
+  abuela: ['assets/audio/abuela-1.mp3', 'assets/audio/abuela-2.mp3'],
+  abuelo: [], // sin audio grabado (no aplica en esta familia) — usa voz del navegador
+  tia: ['assets/audio/tia-1.mp3', 'assets/audio/tia-2.mp3'],
+  tio: ['assets/audio/tio-1.mp3', 'assets/audio/tio-2.mp3'],
+  prima: ['assets/audio/prima-1.mp3', 'assets/audio/prima-2.mp3'],
+  primo: ['assets/audio/primo-1.mp3', 'assets/audio/primo-2.mp3'],
+  familiar: ['assets/audio/familiar-1.mp3', 'assets/audio/familiar-2.mp3'],
+};
+
+// Elige una opción al azar de MESSAGES[category] y devuelve, junto al
+// texto, el audio real que le corresponde (si existe).
+function pickMessage(category) {
+  const entry = MESSAGES[category] || MESSAGES.familiar;
+  const index = Math.floor(Math.random() * entry.options.length);
+  const message = entry.options[index];
+  const audioList = MESSAGE_AUDIO[category] || [];
+  const audioUrl = audioList[index] || null;
+  return { entry, message, audioUrl };
+}
+
+// ---------------------------------------------------------------------
+// AUDIOS DEL SALUDO DINÁMICO (el que menciona el parentesco y el nombre,
+// ej. "Hola, ya sé quién eres, mi tía Brenda"). Se arma pegando 2 o 3
+// clips cortos: intro + relación + nombre. Si falta el audio de la
+// relación, se usa la voz del navegador para todo el saludo. Si falta solo
+// el audio de un nombre en particular, simplemente no se menciona el
+// nombre en el audio (el texto en pantalla sí lo sigue mostrando).
+// ---------------------------------------------------------------------
+const AUDIO_INTRO = 'assets/audio/intro.mp3';
+
+const AUDIO_RELATION = {
+  papa: 'assets/audio/relacion-papa.mp3',
+  mama: 'assets/audio/relacion-mama.mp3',
+  abuela: 'assets/audio/relacion-abuela.mp3',
+  tia: 'assets/audio/relacion-tia.mp3',
+  tio: 'assets/audio/relacion-tio.mp3',
+  prima: 'assets/audio/relacion-prima.mp3',
+  primo: 'assets/audio/relacion-primo.mp3',
+  // abuelo y familiar sin audio grabado — usan la voz del navegador.
+};
+
+// Nombres ya grabados como clip individual (assets/audio/nombre-<clave>.mp3).
+// Agrega aquí la clave conforme vayas subiendo más (sin acentos, minúsculas).
+const AVAILABLE_NAME_AUDIO = new Set([
+  'edras', 'nazareth', 'maria', 'maricela', 'rosa', 'brenda', 'karina',
+  'nelcy', 'glenda', 'osman', 'juan', 'eduardo', 'addy', 'amsy', 'kory',
+  'alexandra', 'isaias',
+]);
+
+function nameAudioUrl(name) {
+  if (!name) return null;
+  const key = slugify(name);
+  return AVAILABLE_NAME_AUDIO.has(key) ? `assets/audio/nombre-${key}.mp3` : null;
+}
+
+// Reproduce una lista de audios uno detrás de otro, como si fuera uno solo.
+function playAudioSequence(urls, onEnd) {
+  const queue = urls.filter(Boolean);
+  if (!queue.length) {
+    if (onEnd) onEnd();
+    return;
+  }
+  let i = 0;
+  function playNext() {
+    if (i >= queue.length) {
+      if (onEnd) onEnd();
+      return;
+    }
+    const audio = new Audio(queue[i]);
+    const advance = () => { i += 1; playNext(); };
+    audio.onended = advance;
+    audio.onerror = advance; // si un clip falla, seguimos con el siguiente
+    audio.play().catch(advance);
+  }
+  playNext();
+}
+
+// Arma y reproduce el saludo dinámico con audios reales si existen, o con
+// la voz del navegador si falta alguna pieza clave.
+function speakGreeting(category, name, onEnd) {
+  const relation = RELATION_LABEL[category] || '';
+  const relationUrl = AUDIO_RELATION[category];
+
+  if (relationUrl) {
+    // Con audio real: el texto en pantalla coincide con lo que se escucha.
+    const fixedText = `Hola, ya sé quién eres, mi ${relation}${name ? ' ' + name : ''}.`;
+    voiceBubbleText.textContent = fixedText;
+    voiceBubble.classList.add('is-active');
+
+    const sequence = [AUDIO_INTRO, relationUrl];
+    const nameUrl = nameAudioUrl(name);
+    if (nameUrl) sequence.push(nameUrl);
+    playAudioSequence(sequence, onEnd);
+  } else {
+    // Sin audio real para esta relación (ej. "abuelo" o desconocido):
+    // usamos la voz sintética con las frases variadas de siempre.
+    babySpeak(buildGreeting(relation, name), onEnd);
+  }
+}
+
+// ---------------------------------------------------------------------
 // Cómo se dice cada parentesco en una frase hablada (en minúsculas).
-// Los nombres reales de cada persona ya están en PEOPLE, más arriba.
 // ---------------------------------------------------------------------
 const RELATION_LABEL = {
   papa: 'papá',
@@ -555,18 +585,21 @@ const RELATION_LABEL = {
   familiar: '',
 };
 
+// Nombres conocidos de antemano para parentescos con una sola persona
+// (papá y mamá son siempre la misma persona). Para abuela/tía/tío/prima/
+// primo, como hay varias personas distintas, no se asume ningún nombre —
+// solo se usa el que la persona diga por voz.
+const DEFAULT_NAMES = {
+  papa: 'Edras',
+  mama: 'Nazareth',
+};
+
 function capitalize(text) {
   return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
-// Si solo hay UNA persona registrada en esa categoría (ej. un solo "papá"),
-// se puede usar su nombre como respaldo aunque no se haya reconocido por
-// cámara (ej. alguien que solo dice "soy papá" por voz, sin decir su nombre).
-// Si hay varias (ej. tres abuelas), no se puede adivinar cuál, así que no
-// se pone nombre.
 function defaultNameForCategory(category) {
-  const matches = PEOPLE.filter((p) => p.category === category && p.name);
-  return matches.length === 1 ? matches[0].name : '';
+  return DEFAULT_NAMES[category] || '';
 }
 
 // Nombre a mostrar al votar para esta categoría (ej. "Papá Edras", "Tía").
@@ -653,17 +686,15 @@ function classifyIdentity(rawText) {
 function handleIdentityAnswer(rawText) {
   state.awaitingAnswer = false;
   const category = classifyIdentity(rawText);
-  const entry = MESSAGES[category];
-  const message = randomFrom(entry.options);
+  const { entry, message, audioUrl } = pickMessage(category);
   const relation = RELATION_LABEL[category] || '';
   const rawName = extractRawName(rawText);
   const name = rawName || defaultNameForCategory(category);
   const voterName = relation && name ? `${capitalize(relation)} ${name}` : categoryDisplayName(category);
 
-  state.currentFamiliar = { category, label: entry.label, kicker: entry.kicker, message, voterName };
+  state.currentFamiliar = { category, label: entry.label, kicker: entry.kicker, message, audioUrl, voterName };
 
-  const greeting = buildGreeting(relation, name);
-  babySpeak(greeting, () => {
+  speakGreeting(category, name, () => {
     showMessageScreen();
   });
 }
@@ -701,7 +732,10 @@ function startCameraFlow() {
     // Cargamos los modelos (incluye reconocimiento facial, si hay fotos) en
     // paralelo con el permiso/inicio de cámara, para no sumar esperas.
     const [, ok] = await Promise.all([loadFaceModels(), startCamera()]);
-    if (ok) runDetectionLoop();
+    if (ok) {
+      runDetectionLoop();
+      startRecordingForCurrentPerson(); // empieza a grabar el recuerdo de esta persona
+    }
   })();
 }
 
@@ -714,8 +748,19 @@ function showMessageScreen() {
   showScreen('message');
   $('messageKicker').textContent = state.currentFamiliar.kicker;
   $('messageText').textContent = state.currentFamiliar.message;
-  // Voz de bebé: el mensaje personalizado se narra como si hablara el bebé.
-  babySpeak(state.currentFamiliar.message);
+
+  // Si hay un audio real grabado para este mensaje, lo reproducimos tal
+  // cual. Si no hay, o falla la reproducción, usamos la voz del navegador.
+  const audioUrl = state.currentFamiliar.audioUrl;
+  if (audioUrl) {
+    const audio = new Audio(audioUrl);
+    audio.play().catch((err) => {
+      console.warn('No se pudo reproducir el audio grabado, usando voz del navegador:', err);
+      babySpeak(state.currentFamiliar.message);
+    });
+  } else {
+    babySpeak(state.currentFamiliar.message);
+  }
 }
 
 $('btnToVote').addEventListener('click', () => {
@@ -766,6 +811,8 @@ $('btnSubmitVote').addEventListener('click', async () => {
 function showSurpriseScreen() {
   showScreen('surprise');
   launchConfetti();
+  const name = (state.currentFamiliar && state.currentFamiliar.voterName) || 'Invitado';
+  stopRecordingAndDownload(name); // descarga el video de recuerdo de esta persona
   setTimeout(restartForNextPerson, 5000);
 }
 
@@ -774,10 +821,10 @@ function restartForNextPerson() {
   state.faceDetected = false;
   state.selectedVote = null;
   state.currentFamiliar = null;
-  recognitionAttemptStart = null;
   voteOptions.forEach((b) => b.classList.remove('is-selected'));
   cameraStatus.textContent = 'Buscando a alguien frente a la cámara…';
   showScreen('camera');
+  startRecordingForCurrentPerson(); // empieza la grabación del siguiente invitado
   runDetectionLoop();
 }
 

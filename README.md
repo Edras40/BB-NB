@@ -16,10 +16,7 @@ gender-reveal/
 ├── tv.js                 # Lógica de la TV: carga votos y se suscribe en tiempo real a Supabase
 ├── supabase-config.js    # Conexión compartida a la base de datos (URL + clave pública)
 ├── assets/
-│   └── faces/            # Fotos de referencia para reconocimiento facial (opcional, ver README ahí)
-│       ├── papa/
-│       ├── mama/
-│       ├── abuela/ ... etc.
+│   └── audio/            # Mensajes y saludos grabados con voz real (ver sección 2.2)
 └── README.md             # Este archivo
 ```
 
@@ -32,12 +29,12 @@ gracias a Supabase Realtime.
 
 | Librería | Uso | Origen |
 |---|---|---|
-| `face-api.js` v0.22.2 | Detección de rostro frente a la cámara | jsDelivr CDN |
+| `face-api.js` v0.22.2 | Detección de presencia frente a la cámara | jsDelivr CDN |
 | Modelos `tiny_face_detector` | Pesos del modelo de detección | `justadudewhohacks.github.io/face-api.js/models` |
 | `Chart.js` v4.4.4 | Gráfico de pastel y de barras (celular y TV) | jsDelivr CDN |
 | `@supabase/supabase-js` v2 | Guardar votos y recibirlos en tiempo real | jsDelivr CDN |
 | Google Fonts: `Baloo 2` + `Quicksand` | Tipografía display y de cuerpo | fonts.googleapis.com |
-| Web Speech API | `SpeechSynthesisUtterance` (voces) y `SpeechRecognition` (escuchar respuestas) | Nativa del navegador, sin instalación |
+| Web Speech API | `SpeechSynthesisUtterance` (respaldo) y `SpeechRecognition` (escuchar respuestas) | Nativa del navegador, sin instalación |
 
 ## 2.1 Configuración de Supabase (obligatoria)
 
@@ -77,14 +74,23 @@ votos entre fiestas, hazlo desde **Table Editor** en el panel de Supabase.
 `supabase-config.js` ya contiene la URL y la clave pública de tu proyecto;
 si alguna vez cambias de proyecto, solo edita esas dos constantes.
 
-## 2.2 Reconocimiento facial (opcional)
+## 2.2 Voz del bebé con audios reales (grabados con ElevenLabs + Audacity)
 
-Si agregas fotos de referencia en `assets/faces/<categoria>/fotoN.jpg` (ver
-`assets/faces/README.md` para la convención exacta), la app puede reconocer
-automáticamente a un familiar por su rostro y saltar directo al mensaje
-personalizado, sin preguntar "¿quién eres tú?" por voz. Es completamente
-opcional: sin fotos, todo sigue funcionando igual que antes (preguntando
-por voz a cada persona).
+Los mensajes personalizados y el saludo dinámico usan audios reales
+guardados en `assets/audio/`, en vez de la voz sintética del navegador:
+
+- **Mensajes fijos**: `papa-1.mp3` a `papa-3.mp3`, `mama-1.mp3` a
+  `mama-3.mp3`, `abuela-1/2.mp3`, `tia-1/2.mp3`, `tio-1/2.mp3`,
+  `prima-1/2.mp3`, `primo-1/2.mp3`, `familiar-1/2.mp3`.
+- **Saludo dinámico** (el que dice el nombre de quien llega): se arma
+  pegando `intro.mp3` + `relacion-<parentesco>.mp3` + `nombre-<nombre>.mp3`.
+
+Si falta algún archivo (por ejemplo, para "abuelo", o un nombre que aún no
+se grabó), la app cae automáticamente a la voz sintética del navegador
+para esa parte — nunca se queda muda. Los nombres y las listas de qué
+audio corresponde a qué mensaje están en `script.js`, en las constantes
+`MESSAGE_AUDIO`, `AUDIO_RELATION` y `AVAILABLE_NAME_AUDIO` — edítalas ahí
+si agregas o cambias personas.
 
 ## 3. Cómo funciona el flujo (Tab 1)
 
