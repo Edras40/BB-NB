@@ -49,8 +49,23 @@
     <!-- ============================================================ -->
     <section id="tabExperience" class="tab-panel is-active" role="tabpanel" aria-labelledby="tabBtnExperience">
 
-      <!-- ---------- PANTALLA 1: CÁMARA / DETECCIÓN (primera pantalla, sin bienvenida previa) ---------- -->
-      <div class="screen is-active" id="screenCamera" data-screen>
+      <!-- ---------- PANTALLA 0: INICIO ---------- -->
+      <div class="screen is-active" id="screenWelcome" data-screen>
+        <div class="glass-card welcome-card">
+          <div class="welcome-decor" aria-hidden="true">
+            <span>🚗</span><span>🧸</span><span>🎠</span><span>🪆</span><span>🎁</span><span>🎈</span>
+          </div>
+          <div class="welcome-icon">👶</div>
+          <h1 class="display-title">¡Es hora de revelar!</h1>
+          <p class="body-text">Toca el botón para comenzar la experiencia.</p>
+          <button class="btn btn-primary" id="btnIniciar">
+            <span class="btn-icon">🎉</span> Iniciar
+          </button>
+        </div>
+      </div>
+
+      <!-- ---------- PANTALLA 1: CÁMARA / DETECCIÓN ---------- -->
+      <div class="screen" id="screenCamera" data-screen>
         <div class="glass-card camera-card">
           <div class="camera-frame">
             <video id="video" autoplay muted playsinline></video>
@@ -127,6 +142,18 @@
     <!-- ============================================================ -->
     <section id="tabStats" class="tab-panel" role="tabpanel" aria-labelledby="tabBtnStats" hidden>
       <div class="stats-grid">
+
+        <!-- Barra grande rosa/azul: se ve completa incluso en horizontal -->
+        <div class="glass-card big-bar-card">
+          <div class="big-bar-track">
+            <div class="big-bar-segment big-bar-nina" id="bigBarNina">
+              <span id="bigBarNinaLabel">0%</span>
+            </div>
+            <div class="big-bar-segment big-bar-nino" id="bigBarNino">
+              <span id="bigBarNinoLabel">0%</span>
+            </div>
+          </div>
+        </div>
 
         <div class="glass-card stat-summary-card">
           <div class="stat-number" id="statTotal">0</div>

@@ -558,7 +558,9 @@ function nameAudioUrl(name) {
   return AVAILABLE_NAME_AUDIO.has(key) ? `assets/audio/nombre-${key}.mp3` : null;
 }
 
-// Reproduce una lista de audios uno detrás de otro, como si fuera uno solo.
+// Reproduce una lista de audios uno detrás de otro, como si fuera uno solo
+// (método simple: crea un <audio> por clip). Se usa como respaldo si el
+// método "sin cortes" de abajo no está disponible o falla.
 function playAudioSequence(urls, onEnd) {
   const queue = urls.filter(Boolean);
   if (!queue.length) {
@@ -580,6 +582,61 @@ function playAudioSequence(urls, onEnd) {
   playNext();
 }
 
+// --- Reproducción "sin cortes" con Web Audio API ---
+// Descarga y decodifica cada clip a memoria, y los programa para sonar
+// exactamente pegados uno al otro (sin el pequeño hueco que se escucha al
+// crear un <audio> nuevo por cada clip).
+let audioCtx = null;
+function getAudioContext() {
+  if (!audioCtx) {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) return null;
+    audioCtx = new AudioContextClass();
+  }
+  return audioCtx;
+}
+
+const audioBufferCache = new Map();
+
+async function loadAudioBuffer(ctx, url) {
+  if (audioBufferCache.has(url)) return audioBufferCache.get(url);
+  const res = await fetch(url);
+  const arrayBuffer = await res.arrayBuffer();
+  const buffer = await ctx.decodeAudioData(arrayBuffer);
+  audioBufferCache.set(url, buffer);
+  return buffer;
+}
+
+async function playAudioSequenceGapless(urls, onEnd) {
+  const queue = urls.filter(Boolean);
+  if (!queue.length) {
+    if (onEnd) onEnd();
+    return;
+  }
+  const ctx = getAudioContext();
+  if (!ctx) {
+    playAudioSequence(queue, onEnd); // navegador sin soporte: respaldo simple
+    return;
+  }
+  try {
+    if (ctx.state === 'suspended') await ctx.resume();
+    const buffers = await Promise.all(queue.map((url) => loadAudioBuffer(ctx, url)));
+    let startTime = ctx.currentTime + 0.05; // pequeñísimo margen para que no se corte el inicio
+    buffers.forEach((buffer) => {
+      const source = ctx.createBufferSource();
+      source.buffer = buffer;
+      source.connect(ctx.destination);
+      source.start(startTime);
+      startTime += buffer.duration;
+    });
+    const totalMs = (startTime - ctx.currentTime) * 1000;
+    setTimeout(() => { if (onEnd) onEnd(); }, totalMs);
+  } catch (err) {
+    console.warn('Reproducción sin cortes falló, usando respaldo simple:', err);
+    playAudioSequence(queue, onEnd);
+  }
+}
+
 // Arma y reproduce el saludo dinámico con audios reales si existen, o con
 // la voz del navegador si falta alguna pieza clave.
 function speakGreeting(category, name, onEnd) {
@@ -595,7 +652,7 @@ function speakGreeting(category, name, onEnd) {
     const sequence = [AUDIO_INTRO, relationUrl];
     const nameUrl = nameAudioUrl(name);
     if (nameUrl) sequence.push(nameUrl);
-    playAudioSequence(sequence, onEnd);
+    playAudioSequenceGapless(sequence, onEnd);
   } else {
     // Sin audio real para esta relación (ej. "abuelo" o desconocido):
     // usamos la voz sintética con las frases variadas de siempre.
@@ -714,6 +771,33 @@ function classifyIdentity(rawText) {
   return 'familiar';
 }
 
+// ---------------------------------------------------------------------
+// MÚSICA DE FONDO — suena desde que el bebé reconoce a la persona
+// ("ya sé quién eres...") hasta que se termina de votar y vuelve a buscar
+// al siguiente invitado. Sube tu pista a assets/audio/musica-fondo.mp3;
+// si no existe el archivo, simplemente no suena nada, sin errores.
+// ---------------------------------------------------------------------
+const MUSIC_URL = 'assets/audio/musica-fondo.mp3';
+const MUSIC_VOLUME = 0.25; // bajo, para no tapar las voces
+let bgMusic = null;
+
+function startBackgroundMusic() {
+  if (!bgMusic) {
+    bgMusic = new Audio(MUSIC_URL);
+    bgMusic.loop = true;
+    bgMusic.volume = MUSIC_VOLUME;
+  }
+  bgMusic.currentTime = 0;
+  bgMusic.play().catch(() => {}); // si falta el archivo, no pasa nada
+}
+
+function stopBackgroundMusic() {
+  if (bgMusic) {
+    bgMusic.pause();
+    bgMusic.currentTime = 0;
+  }
+}
+
 // Cuando la persona responde por voz (ej. "Soy su tía Brenda"): saca su
 // nombre si lo dijo, saluda mencionándolo, y luego pasa al mensaje.
 function handleIdentityAnswer(rawText) {
@@ -742,6 +826,7 @@ function handleIdentityAnswer(rawText) {
    7. FLUJO DE PANTALLAS
    --------------------------------------------------------------------- */
 const screens = {
+  welcome: $('screenWelcome'),
   camera: $('screenCamera'),
   message: $('screenMessage'),
   transition: $('screenTransition'),
@@ -754,25 +839,29 @@ function showScreen(name) {
   screens[name].classList.add('is-active');
 }
 
-// --- Iniciar cámara y detección ---
-// La cámara ya se ve desde el primer momento (es la pantalla activa por
-// defecto en el HTML). Pero el permiso de cámara/micrófono en el celular
-// solo lo conceden los navegadores si hay un toque real de la persona justo
-// antes — no es algo que se pueda evitar desde el código. Por eso esperamos
-// el primer toque/clic en cualquier parte de la pantalla para pedir el
-// permiso ahí mismo.
-//
-// Usamos solo el evento "click" (no "touchstart"): en algunos celulares,
-// "touchstart" se dispara apenas se toca la pantalla, antes de que el toque
-// se considere "completo", y el navegador no lo cuenta como válido para dar
-// permiso de cámara — eso hacía que el primer toque fallara en silencio y
-// hubiera que tocar dos veces. "click" siempre se dispara después del toque
-// completo, en cualquier celular.
+// Pide pantalla completa (oculta la barra de direcciones). Si el
+// navegador no lo soporta o el usuario la cierra, no pasa nada — la app
+// sigue funcionando normal, solo sin pantalla completa.
+function requestFullscreenSafe() {
+  const el = document.documentElement;
+  const request = el.requestFullscreen || el.webkitRequestFullscreen || el.msRequestFullscreen;
+  if (request) {
+    request.call(el).catch(() => {});
+  }
+}
+
+// --- Botón "Iniciar": un solo toque que dispara todo junto ---
+// Pantalla completa, música de fondo y cámara necesitan un toque real de
+// la persona — no se pueden pedir automáticamente sin esto.
 let cameraStarted = false;
 
 function startCameraFlow() {
   if (cameraStarted) return;
   cameraStarted = true;
+
+  requestFullscreenSafe();
+  startBackgroundMusic();
+  showScreen('camera');
 
   (async () => {
     // Los modelos ya empezaron a cargar desde que abrió la página
@@ -784,14 +873,15 @@ function startCameraFlow() {
       startRecordingForCurrentPerson(); // empieza a grabar el recuerdo de esta persona
     } else {
       // Falló (permiso denegado, cámara ocupada, etc.): permitimos
-      // reintentar con un toque más, en vez de quedar bloqueado para siempre.
+      // reintentar con otro toque del botón "Iniciar" en vez de quedar
+      // bloqueado para siempre.
       cameraStarted = false;
+      showScreen('welcome');
     }
   })();
 }
 
-document.addEventListener('click', startCameraFlow);
-document.addEventListener('keydown', startCameraFlow);
+$('btnIniciar').addEventListener('click', startCameraFlow);
 
 // --- Pantalla 2: mensaje personalizado ---
 function showMessageScreen() {
@@ -868,6 +958,7 @@ function showSurpriseScreen() {
 
 function restartForNextPerson() {
   // Reinicia el flujo para que otra persona participe, sin recargar la cámara.
+  // (La música de fondo sigue sonando de corrido, no se corta por invitado.)
   state.faceDetected = false;
   state.selectedVote = null;
   state.currentFamiliar = null;
@@ -955,6 +1046,12 @@ async function renderStats() {
   $('statNinoCount').textContent = ninoCount;
   $('statNinaPercent').textContent = `${ninaPct}%`;
   $('statNinoPercent').textContent = `${ninoPct}%`;
+
+  // Barra grande rosa/azul.
+  $('bigBarNina').style.width = `${ninaPct}%`;
+  $('bigBarNino').style.width = `${ninoPct}%`;
+  $('bigBarNinaLabel').textContent = `${ninaPct}%`;
+  $('bigBarNinoLabel').textContent = `${ninoPct}%`;
 
   renderPieChart(ninaCount, ninoCount);
   renderBarChart(ninaCount, ninoCount);
