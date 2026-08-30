@@ -53,6 +53,28 @@ function activateTab(name) {
 tabBtnExperience.addEventListener('click', () => activateTab('experience'));
 tabBtnStats.addEventListener('click', () => activateTab('stats'));
 
+// Mide de verdad si el contenido de Estadísticas cabe en la pantalla
+// disponible (sin necesidad de hacer scroll), y va quitando elementos
+// menos esenciales hasta que quepa. Funciona igual en cualquier celular,
+// TV o proyector, sin depender de un tamaño de pantalla adivinado.
+function fitStatsToScreen() {
+  if (tabStats.hidden) return; // no tiene sentido medir algo que no se ve
+
+  document.body.classList.remove('stats-compact', 'stats-ultra-compact');
+
+  const fits = () => document.documentElement.scrollHeight <= window.innerHeight + 2;
+
+  if (fits()) return; // cabe todo tal cual, no hace falta nada más
+
+  document.body.classList.add('stats-compact'); // quita lista y botón de reinicio
+  if (fits()) return;
+
+  document.body.classList.add('stats-ultra-compact'); // quita también los gráficos
+}
+
+window.addEventListener('resize', fitStatsToScreen);
+window.addEventListener('orientationchange', () => setTimeout(fitStatsToScreen, 300));
+
 /* ---------------------------------------------------------------------
    3. ICONOS FLOTANTES DECORATIVOS (puramente visual, no interactivo)
    --------------------------------------------------------------------- */
@@ -532,6 +554,7 @@ function pickMessage(category) {
 // nombre en el audio (el texto en pantalla sí lo sigue mostrando).
 // ---------------------------------------------------------------------
 const AUDIO_INTRO = 'assets/audio/intro.mp3';
+const AUDIO_GENERIC_GREETING = 'assets/audio/saludo-generico.mp3'; // "¡Hola! Mucho gusto conocerte."
 
 const AUDIO_RELATION = {
   papa: 'assets/audio/relacion-papa.mp3',
@@ -664,8 +687,13 @@ function speakGreeting(category, name, onEnd) {
 
     if (nameUrl) sequence.push(nameUrl);
     playAudioSequenceGapless(sequence, onEnd);
+  } else if (!relation) {
+    // Sin parentesco reconocido (ej. solo dijo su nombre, sin decir
+    // "soy tu tía/tío/etc."): usamos el saludo genérico grabado si existe;
+    // si no, la voz sintética de respaldo con el mismo texto.
+    speakOrPlay('¡Hola! Mucho gusto conocerte.', AUDIO_GENERIC_GREETING, onEnd);
   } else {
-    // Sin audio real para esta relación (ej. "abuelo" o desconocido):
+    // Parentesco reconocido pero sin audio grabado para él (ej. "abuelo"):
     // usamos la voz sintética con las frases variadas de siempre.
     babySpeak(buildGreeting(relation, name), onEnd);
   }
@@ -1089,6 +1117,11 @@ async function renderStats() {
   renderPieChart(ninaCount, ninoCount);
   renderBarChart(ninaCount, ninoCount);
   renderTimeline(votes);
+
+  // Espera un instante a que el DOM/Chart.js terminen de dibujar antes de
+  // medir si todo cabe en la pantalla (si mide muy pronto, el tamaño real
+  // del contenido puede no estar listo todavía).
+  setTimeout(fitStatsToScreen, 50);
 }
 
 function renderPieChart(ninaCount, ninoCount) {
@@ -1167,6 +1200,15 @@ function escapeHtml(str) {
   div.textContent = str;
   return div.innerHTML;
 }
+
+$('btnRefreshStats').addEventListener('click', async () => {
+  const btn = $('btnRefreshStats');
+  btn.disabled = true;
+  btn.textContent = '🔄 Actualizando…';
+  await renderStats();
+  btn.disabled = false;
+  btn.textContent = '🔄 Actualizar';
+});
 
 $('btnResetVotes').addEventListener('click', () => {
   // Por seguridad, la clave pública (anon) NO tiene permiso de borrar votos

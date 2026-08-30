@@ -319,6 +319,23 @@ button {
 /* --- Cámara / identificación --- */
 .camera-card { max-width: 480px; }
 
+/* --- Pantallas grandes (laptop/desktop): todo un poco más grande, para
+   no verse diminuto en medio de tanto espacio vacío --- */
+@media (min-width: 900px) {
+  .glass-card { max-width: 640px; padding: clamp(32px, 4vw, 56px); }
+  .camera-card { max-width: 620px; }
+  .camera-frame { aspect-ratio: 4 / 3; }
+  .voice-bubble { font-size: 1.15rem; padding: 18px 24px; }
+  .heard-text { font-size: 1.05rem; }
+  .mic-indicator { font-size: 0.95rem; }
+  .camera-status { font-size: 1rem; padding: 14px 18px; }
+  .display-title { font-size: clamp(1.8rem, 2.4vw, 2.4rem); }
+  .body-text { font-size: 1.15rem; }
+  .message-text { font-size: clamp(1.35rem, 2vw, 1.75rem); }
+  .btn { font-size: 1.1rem; padding: 16px 34px; }
+}
+
+
 .camera-frame {
   position: relative;
   width: 100%;
@@ -666,30 +683,41 @@ button {
   .vote-options { flex-direction: column; }
 }
 
-/* --- Celular en horizontal: todo compacto en una sola pantalla, sin scroll --- */
-@media (orientation: landscape) and (max-height: 520px) {
-  .app-main { padding: 8px 16px; align-items: flex-start; }
-  .topbar { padding: 8px 16px 4px; }
-  .tabs { padding: 3px; }
-  .tab-btn { padding: 6px 14px; font-size: 0.8rem; }
-  .brand { font-size: 1rem; }
-  .brand-icon { font-size: 1.2rem; }
+/* --- Modo compacto: se activa por JavaScript (no por un tamaño de pantalla
+   adivinado), cuando la app detecta que el contenido no cabe completo en
+   la pantalla disponible — así funciona igual en cualquier celular, TV o
+   proyector, sin importar su resolución exacta. --- */
+.tab-panel.is-compact .app-main-inner { padding-top: 0; }
+body.stats-compact .app-main { padding: 8px 16px; align-items: flex-start; }
+body.stats-compact .topbar { padding: 8px 16px 4px; }
+body.stats-compact .tabs { padding: 3px; }
+body.stats-compact .tab-btn { padding: 6px 14px; font-size: 0.8rem; }
+body.stats-compact .brand { font-size: 1rem; }
+body.stats-compact .brand-icon { font-size: 1.2rem; }
 
-  .stats-grid {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 8px;
-    max-width: 100%;
-  }
-  .big-bar-card { grid-column: span 4; padding: 8px 12px; }
-  .big-bar-track { height: 30px; }
-  .big-bar-segment { font-size: 0.8rem; }
+body.stats-compact .stats-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  max-width: 100%;
+}
+body.stats-compact .big-bar-card { grid-column: span 4; padding: 8px 12px; }
+body.stats-compact .big-bar-track { height: 30px; }
+body.stats-compact .big-bar-segment { font-size: 0.8rem; }
 
-  .stat-summary-card { grid-column: span 1; padding: 8px 6px; }
-  .stat-number { font-size: 1.3rem; }
-  .stat-label { font-size: 0.65rem; margin-top: 0; }
-  .stat-percent { font-size: 0.7rem; margin-top: 2px; }
+body.stats-compact .stat-summary-card { grid-column: span 1; padding: 8px 6px; }
+body.stats-compact .stat-number { font-size: 1.3rem; }
+body.stats-compact .stat-label { font-size: 0.65rem; margin-top: 0; }
+body.stats-compact .stat-percent { font-size: 0.7rem; margin-top: 2px; }
 
-  /* En horizontal cortito, los gráficos y la lista larga estorban más de lo
-     que ayudan — se ocultan y se dejan solo los números + la barra grande. */
-  .chart-card, .timeline-card, .reset-card { display: none; }
+/* Primer nivel de recorte: se ocultan la lista de participantes y el
+   botón de reiniciar (lo menos esencial). */
+body.stats-compact .timeline-card,
+body.stats-compact .reset-card {
+  display: none;
+}
+
+/* Si con eso todavía no cabe, se ocultan también los gráficos de pastel
+   y de barras — quedan solo los números y la barra grande. */
+body.stats-ultra-compact .chart-card {
+  display: none;
 }
