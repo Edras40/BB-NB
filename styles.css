@@ -188,7 +188,7 @@ button {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 24px clamp(16px, 5vw, 48px) 60px;
+  padding: 24px clamp(16px, 5vw, 48px);
 }
 
 .tab-panel { width: 100%; }
