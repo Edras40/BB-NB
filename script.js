@@ -47,33 +47,12 @@ function activateTab(name) {
   tabBtnStats.setAttribute('aria-selected', String(!isExperience));
   tabExperience.hidden = !isExperience;
   tabStats.hidden = isExperience;
+  $('btnRefreshStats').hidden = isExperience; // solo se ve en la pestaña de Estadísticas
   if (!isExperience) renderStats(); // refresca estadísticas cada vez que se abre la pestaña
 }
 
 tabBtnExperience.addEventListener('click', () => activateTab('experience'));
 tabBtnStats.addEventListener('click', () => activateTab('stats'));
-
-// Mide de verdad si el contenido de Estadísticas cabe en la pantalla
-// disponible (sin necesidad de hacer scroll), y va quitando elementos
-// menos esenciales hasta que quepa. Funciona igual en cualquier celular,
-// TV o proyector, sin depender de un tamaño de pantalla adivinado.
-function fitStatsToScreen() {
-  if (tabStats.hidden) return; // no tiene sentido medir algo que no se ve
-
-  document.body.classList.remove('stats-compact', 'stats-ultra-compact');
-
-  const fits = () => document.documentElement.scrollHeight <= window.innerHeight + 2;
-
-  if (fits()) return; // cabe todo tal cual, no hace falta nada más
-
-  document.body.classList.add('stats-compact'); // quita lista y botón de reinicio
-  if (fits()) return;
-
-  document.body.classList.add('stats-ultra-compact'); // quita también los gráficos
-}
-
-window.addEventListener('resize', fitStatsToScreen);
-window.addEventListener('orientationchange', () => setTimeout(fitStatsToScreen, 300));
 
 /* ---------------------------------------------------------------------
    3. ICONOS FLOTANTES DECORATIVOS (puramente visual, no interactivo)
@@ -940,7 +919,20 @@ function startCameraFlow() {
   })();
 }
 
-$('btnIniciar').addEventListener('click', startCameraFlow);
+$('btnIniciar').addEventListener('click', () => {
+  if (!cameraStarted) {
+    // Primera vez: pide pantalla completa, arranca la música y la cámara.
+    startCameraFlow();
+  } else {
+    // Ya se había inicializado todo antes (es el turno de otro invitado):
+    // solo volvemos a mostrar la cámara y seguimos buscando un rostro,
+    // sin pedir permisos de nuevo ni reiniciar la música.
+    showScreen('camera');
+    cameraStatus.textContent = 'Buscando a alguien frente a la cámara…';
+    runDetectionLoop();
+    startRecordingForCurrentPerson();
+  }
+});
 
 // --- Pantalla 2: mensaje personalizado ---
 // Cuando el bebé termina de hablar, espera 4 segundos y pasa solo a la
@@ -1018,16 +1010,15 @@ function showSurpriseScreen() {
 }
 
 function restartForNextPerson() {
-  // Reinicia el flujo para que otra persona participe, sin recargar la cámara.
-  // (La música de fondo sigue sonando de corrido, no se corta por invitado.)
+  // Reinicia el flujo para que otra persona participe. Vuelve a la
+  // pantalla de "Iniciar" — la cámara sigue detrás lista, pero espera a
+  // que alguien toque el botón de nuevo para el siguiente invitado.
+  stopDetectionLoop(); // no seguir buscando rostros mientras se ve la pantalla de inicio
   state.faceDetected = false;
   state.selectedVote = null;
   state.currentFamiliar = null;
   voteOptions.forEach((b) => b.classList.remove('is-selected'));
-  cameraStatus.textContent = 'Buscando a alguien frente a la cámara…';
-  showScreen('camera');
-  startRecordingForCurrentPerson(); // empieza la grabación del siguiente invitado
-  runDetectionLoop();
+  showScreen('welcome');
 }
 
 /* ---------------------------------------------------------------------
@@ -1117,11 +1108,6 @@ async function renderStats() {
   renderPieChart(ninaCount, ninoCount);
   renderBarChart(ninaCount, ninoCount);
   renderTimeline(votes);
-
-  // Espera un instante a que el DOM/Chart.js terminen de dibujar antes de
-  // medir si todo cabe en la pantalla (si mide muy pronto, el tamaño real
-  // del contenido puede no estar listo todavía).
-  setTimeout(fitStatsToScreen, 50);
 }
 
 function renderPieChart(ninaCount, ninoCount) {
