@@ -840,13 +840,23 @@ function showScreen(name) {
 }
 
 // Pide pantalla completa (oculta la barra de direcciones). Si el
-// navegador no lo soporta o el usuario la cierra, no pasa nada — la app
-// sigue funcionando normal, solo sin pantalla completa.
+// navegador no lo soporta, lo bloquea, o el usuario la cierra, no pasa
+// nada — la app sigue funcionando normal, solo sin pantalla completa.
+// Importante: en algunos navegadores esto puede fallar de forma "dura"
+// (lanza un error de inmediato, no solo lo rechaza), así que va protegido
+// con try/catch para que nunca corte el resto de la experiencia.
 function requestFullscreenSafe() {
-  const el = document.documentElement;
-  const request = el.requestFullscreen || el.webkitRequestFullscreen || el.msRequestFullscreen;
-  if (request) {
-    request.call(el).catch(() => {});
+  try {
+    const el = document.documentElement;
+    const request = el.requestFullscreen || el.webkitRequestFullscreen || el.msRequestFullscreen;
+    if (request) {
+      const result = request.call(el);
+      if (result && typeof result.catch === 'function') {
+        result.catch(() => {});
+      }
+    }
+  } catch (err) {
+    console.warn('No se pudo activar pantalla completa (se sigue sin ella):', err);
   }
 }
 
@@ -859,8 +869,10 @@ function startCameraFlow() {
   if (cameraStarted) return;
   cameraStarted = true;
 
-  requestFullscreenSafe();
-  startBackgroundMusic();
+  // Cada una de estas está protegida por su cuenta: si una falla, no debe
+  // impedir que las demás (sobre todo mostrar la cámara) sigan adelante.
+  try { requestFullscreenSafe(); } catch (err) { console.warn(err); }
+  try { startBackgroundMusic(); } catch (err) { console.warn('No se pudo iniciar la música:', err); }
   showScreen('camera');
 
   (async () => {
