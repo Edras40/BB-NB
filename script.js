@@ -651,6 +651,17 @@ function speakGreeting(category, name, onEnd) {
 
     const sequence = [AUDIO_INTRO, relationUrl];
     const nameUrl = nameAudioUrl(name);
+
+    if (name && !nameUrl) {
+      // Dijo un nombre, pero no está grabado: reproducimos el audio real
+      // (intro + parentesco) y, al terminar, decimos el nombre con la voz
+      // sintética del bebé — así igual se menciona, en vez de omitirlo.
+      playAudioSequenceGapless(sequence, () => {
+        babySpeak(name, onEnd);
+      });
+      return;
+    }
+
     if (nameUrl) sequence.push(nameUrl);
     playAudioSequenceGapless(sequence, onEnd);
   } else {
