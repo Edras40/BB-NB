@@ -107,9 +107,12 @@ ensureFaceModelsLoaded();
 
 async function startCamera() {
   try {
-    // audio:true además de video, para poder grabar también la voz de la
-    // persona (no solo su imagen) como recuerdo descargable.
-    const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+    // Solo video, sin audio: en muchos celulares el micrófono no se puede
+    // compartir entre dos usos a la vez, y si la cámara ya lo reserva
+    // (para grabar el recuerdo), el reconocimiento de voz se queda sordo.
+    // El video de recuerdo queda sin el audio de la persona, pero la voz
+    // para identificarse sí funciona — es la prioridad.
+    const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
     state.cameraStream = stream;
     video.srcObject = stream;
     await video.play();
@@ -124,10 +127,10 @@ async function startCamera() {
 }
 
 /* ---------------------------------------------------------------------
-   GRABACIÓN DE RECUERDO — graba cámara + voz de la persona (no la voz
-   sintética del bebé, eso no se puede capturar) mientras interactúa, y al
-   terminar de votar descarga automáticamente el clip al celular, sin
-   subir nada a ningún servidor.
+   GRABACIÓN DE RECUERDO — graba solo el video de la cámara (sin audio: se
+   liberó el micrófono para que el reconocimiento de voz funcione bien en
+   celulares) mientras interactúa, y al terminar de votar descarga
+   automáticamente el clip al celular, sin subir nada a ningún servidor.
    --------------------------------------------------------------------- */
 let mediaRecorder = null;
 let recordedChunks = [];
