@@ -36,23 +36,36 @@ function randomFrom(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
    --------------------------------------------------------------------- */
 const tabBtnExperience = $('tabBtnExperience');
 const tabBtnStats = $('tabBtnStats');
+const tabBtnParticipants = $('tabBtnParticipants');
 const tabExperience = $('tabExperience');
 const tabStats = $('tabStats');
+const tabParticipants = $('tabParticipants');
 
 function activateTab(name) {
   const isExperience = name === 'experience';
+  const isStats = name === 'stats';
+  const isParticipants = name === 'participants';
+
   tabBtnExperience.classList.toggle('is-active', isExperience);
-  tabBtnStats.classList.toggle('is-active', !isExperience);
+  tabBtnStats.classList.toggle('is-active', isStats);
+  tabBtnParticipants.classList.toggle('is-active', isParticipants);
   tabBtnExperience.setAttribute('aria-selected', String(isExperience));
-  tabBtnStats.setAttribute('aria-selected', String(!isExperience));
+  tabBtnStats.setAttribute('aria-selected', String(isStats));
+  tabBtnParticipants.setAttribute('aria-selected', String(isParticipants));
+
   tabExperience.hidden = !isExperience;
-  tabStats.hidden = isExperience;
-  $('btnRefreshStats').hidden = isExperience; // solo se ve en la pestaña de Estadísticas
-  if (!isExperience) renderStats(); // refresca estadísticas cada vez que se abre la pestaña
+  tabStats.hidden = !isStats;
+  tabParticipants.hidden = !isParticipants;
+
+  // El botón "Actualizar" sirve para ambas pestañas de datos en vivo.
+  $('btnRefreshStats').hidden = isExperience;
+
+  if (isStats || isParticipants) renderStats(); // refresca cada vez que se abre alguna de las dos
 }
 
 tabBtnExperience.addEventListener('click', () => activateTab('experience'));
 tabBtnStats.addEventListener('click', () => activateTab('stats'));
+tabBtnParticipants.addEventListener('click', () => activateTab('participants'));
 
 /* ---------------------------------------------------------------------
    3. ICONOS FLOTANTES DECORATIVOS (puramente visual, no interactivo)
@@ -108,17 +121,17 @@ ensureFaceModelsLoaded();
 
 async function startCamera() {
   try {
-    // Solo video, sin audio: en muchos celulares el micrófono no se puede
-    // compartir entre dos usos a la vez, y si la cámara ya lo reserva
-    // (para grabar el recuerdo), el reconocimiento de voz se queda sordo.
-    // El video de recuerdo queda sin el audio de la persona, pero la voz
-    // para identificarse sí funciona — es la prioridad.
-    const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+    // Con audio: en computadora (a diferencia de muchos celulares) sí se
+    // puede compartir el micrófono entre la grabación del recuerdo y el
+    // reconocimiento de voz sin problema, así que el video de recuerdo
+    // incluye la voz de la persona.
+    const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
     state.cameraStream = stream;
     video.srcObject = stream;
     await video.play();
     overlay.width = video.clientWidth;
     overlay.height = video.clientHeight;
+    setupRecordingAudioGraph(stream); // permite que la voz del bebé también quede en el video
     return true;
   } catch (err) {
     console.warn('No se pudo acceder a la cámara:', err);
@@ -128,13 +141,40 @@ async function startCamera() {
 }
 
 /* ---------------------------------------------------------------------
-   GRABACIÓN DE RECUERDO — graba solo el video de la cámara (sin audio: se
-   liberó el micrófono para que el reconocimiento de voz funcione bien en
-   celulares) mientras interactúa, y al terminar de votar descarga
-   automáticamente el clip al celular, sin subir nada a ningún servidor.
+   GRABACIÓN DE RECUERDO — graba video + audio de la persona (micrófono) Y
+   la voz del bebé cuando es un audio real ya grabado (los mensajes y
+   saludos que subiste), mezclando todo con la Web Audio API. La voz
+   sintética de respaldo del navegador NO se puede capturar de ninguna
+   forma — es una limitación de los navegadores, no hay manera de evitarlo.
+   Al terminar de votar, descarga automáticamente el clip, sin subir nada
+   a ningún servidor.
    --------------------------------------------------------------------- */
 let mediaRecorder = null;
 let recordedChunks = [];
+let recordingDestination = null; // nodo donde se mezcla micrófono + voz del bebé
+
+// Prepara el "mezclador" de audio para la grabación: enruta el micrófono
+// de la cámara hacia un destino especial que luego se combina con la voz
+// del bebé (ver playCapturedAudioElement y playAudioSequenceGapless).
+function setupRecordingAudioGraph(cameraStream) {
+  try {
+    const ctx = getAudioContext();
+    if (!ctx) return;
+    recordingDestination = ctx.createMediaStreamDestination();
+
+    const micTracks = cameraStream.getAudioTracks();
+    if (micTracks.length) {
+      const micStream = new MediaStream(micTracks);
+      const micSource = ctx.createMediaStreamSource(micStream);
+      micSource.connect(recordingDestination);
+      // (no se conecta a ctx.destination: así no se escucha eco del
+      // micrófono por las bocinas, solo queda mezclado en la grabación)
+    }
+  } catch (err) {
+    console.warn('No se pudo preparar la mezcla de audio para grabar:', err);
+    recordingDestination = null;
+  }
+}
 
 function pickRecordingMimeType() {
   if (typeof MediaRecorder === 'undefined') return null;
@@ -144,12 +184,22 @@ function pickRecordingMimeType() {
 
 function startRecordingForCurrentPerson() {
   if (!state.cameraStream || typeof MediaRecorder === 'undefined') return;
+
+  // Combinamos el video de la cámara con el audio ya mezclado (micrófono +
+  // voz del bebé). Si por algún motivo no se pudo preparar la mezcla, se
+  // graba igual solo con el micrófono (como antes).
+  const videoTracks = state.cameraStream.getVideoTracks();
+  const audioTracks = recordingDestination
+    ? recordingDestination.stream.getAudioTracks()
+    : state.cameraStream.getAudioTracks();
+  const combinedStream = new MediaStream([...videoTracks, ...audioTracks]);
+
   const mimeType = pickRecordingMimeType();
   try {
     recordedChunks = [];
     mediaRecorder = mimeType
-      ? new MediaRecorder(state.cameraStream, { mimeType })
-      : new MediaRecorder(state.cameraStream);
+      ? new MediaRecorder(combinedStream, { mimeType })
+      : new MediaRecorder(combinedStream);
     mediaRecorder.ondataavailable = (e) => {
       if (e.data && e.data.size > 0) recordedChunks.push(e.data);
     };
@@ -297,7 +347,7 @@ function speakOrPlay(text, audioUrl, onEnd) {
   voiceBubbleText.textContent = text;
   voiceBubble.classList.add('is-active');
 
-  const audio = new Audio(audioUrl);
+  const audio = createCapturedAudio(audioUrl);
   audio.onended = () => { if (onEnd) onEnd(); };
   audio.onerror = () => babySpeak(text, onEnd);
   audio.play().catch(() => babySpeak(text, onEnd));
@@ -609,6 +659,25 @@ async function loadAudioBuffer(ctx, url) {
   return buffer;
 }
 
+// Crea un <audio> normal, pero enrutado también hacia la mezcla de
+// grabación (si está disponible) — así, además de escucharse por las
+// bocinas, esa voz queda incluida en el video de recuerdo.
+function createCapturedAudio(url) {
+  const audio = new Audio(url);
+  try {
+    const ctx = getAudioContext();
+    if (ctx && recordingDestination) {
+      if (ctx.state === 'suspended') ctx.resume();
+      const source = ctx.createMediaElementSource(audio);
+      source.connect(ctx.destination); // para seguir escuchándolo por las bocinas
+      source.connect(recordingDestination); // y que quede en el video
+    }
+  } catch (err) {
+    console.warn('No se pudo enrutar este audio hacia la grabación:', err);
+  }
+  return audio;
+}
+
 async function playAudioSequenceGapless(urls, onEnd) {
   const queue = urls.filter(Boolean);
   if (!queue.length) {
@@ -628,6 +697,7 @@ async function playAudioSequenceGapless(urls, onEnd) {
       const source = ctx.createBufferSource();
       source.buffer = buffer;
       source.connect(ctx.destination);
+      if (recordingDestination) source.connect(recordingDestination); // también queda en el video
       source.start(startTime);
       startTime += buffer.duration;
     });
@@ -950,7 +1020,7 @@ function showMessageScreen() {
   // cual. Si no hay, o falla la reproducción, usamos la voz del navegador.
   const audioUrl = state.currentFamiliar.audioUrl;
   if (audioUrl) {
-    const audio = new Audio(audioUrl);
+    const audio = createCapturedAudio(audioUrl);
     audio.onended = goToVoteAfterPause;
     audio.onerror = () => babySpeak(state.currentFamiliar.message, goToVoteAfterPause);
     audio.play().catch(() => {
@@ -1080,11 +1150,8 @@ function launchConfetti() {
 }
 
 /* ---------------------------------------------------------------------
-   10. ESTADÍSTICAS (Chart.js) + LÍNEA DE TIEMPO
+   10. ESTADÍSTICAS + LÍNEA DE TIEMPO
    --------------------------------------------------------------------- */
-let pieChartInstance = null;
-let barChartInstance = null;
-
 async function renderStats() {
   const votes = await getVotes();
   const total = votes.length;
@@ -1093,11 +1160,7 @@ async function renderStats() {
   const ninaPct = total ? Math.round((ninaCount / total) * 100) : 0;
   const ninoPct = total ? Math.round((ninoCount / total) * 100) : 0;
 
-  $('statTotal').textContent = total;
-  $('statNinaCount').textContent = ninaCount;
-  $('statNinoCount').textContent = ninoCount;
-  $('statNinaPercent').textContent = `${ninaPct}%`;
-  $('statNinoPercent').textContent = `${ninoPct}%`;
+  $('statTotal').textContent = `${total} ${total === 1 ? 'voto total' : 'votos totales'}`;
 
   // Barra grande rosa/azul.
   $('bigBarNina').style.width = `${ninaPct}%`;
@@ -1105,60 +1168,7 @@ async function renderStats() {
   $('bigBarNinaLabel').textContent = `${ninaPct}%`;
   $('bigBarNinoLabel').textContent = `${ninoPct}%`;
 
-  renderPieChart(ninaCount, ninoCount);
-  renderBarChart(ninaCount, ninoCount);
   renderTimeline(votes);
-}
-
-function renderPieChart(ninaCount, ninoCount) {
-  const ctx = $('pieChart').getContext('2d');
-  const data = {
-    labels: ['Niña', 'Niño'],
-    datasets: [{
-      data: [ninaCount, ninoCount],
-      backgroundColor: ['#F2A6CE', '#9CD4F2'],
-      borderColor: '#ffffff',
-      borderWidth: 2,
-    }],
-  };
-  if (pieChartInstance) {
-    pieChartInstance.data = data;
-    pieChartInstance.update();
-  } else {
-    pieChartInstance = new Chart(ctx, {
-      type: 'pie',
-      data,
-      options: {
-        plugins: { legend: { position: 'bottom', labels: { font: { family: 'Quicksand' } } } },
-      },
-    });
-  }
-}
-
-function renderBarChart(ninaCount, ninoCount) {
-  const ctx = $('barChart').getContext('2d');
-  const data = {
-    labels: ['Niña', 'Niño'],
-    datasets: [{
-      label: 'Votos',
-      data: [ninaCount, ninoCount],
-      backgroundColor: ['#F2A6CE', '#9CD4F2'],
-      borderRadius: 10,
-    }],
-  };
-  if (barChartInstance) {
-    barChartInstance.data = data;
-    barChartInstance.update();
-  } else {
-    barChartInstance = new Chart(ctx, {
-      type: 'bar',
-      data,
-      options: {
-        plugins: { legend: { display: false } },
-        scales: { y: { beginAtZero: true, ticks: { precision: 0 } } },
-      },
-    });
-  }
 }
 
 function renderTimeline(votes) {
@@ -1190,10 +1200,10 @@ function escapeHtml(str) {
 $('btnRefreshStats').addEventListener('click', async () => {
   const btn = $('btnRefreshStats');
   btn.disabled = true;
-  btn.textContent = '🔄 Actualizando…';
+  btn.textContent = '⏳';
   await renderStats();
   btn.disabled = false;
-  btn.textContent = '🔄 Actualizar';
+  btn.textContent = '🔄';
 });
 
 $('btnResetVotes').addEventListener('click', () => {

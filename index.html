@@ -39,8 +39,11 @@
       <button class="tab-btn" id="tabBtnStats" role="tab" aria-selected="false" aria-controls="tabStats">
         Estadísticas
       </button>
+      <button class="tab-btn" id="tabBtnParticipants" role="tab" aria-selected="false" aria-controls="tabParticipants">
+        Participantes
+      </button>
     </nav>
-    <button class="btn btn-secondary btn-refresh-top" id="btnRefreshStats" hidden>🔄 Actualizar</button>
+    <button class="btn btn-secondary btn-refresh-top" id="btnRefreshStats" hidden title="Actualizar">🔄</button>
   </header>
 
   <main class="app-main">
@@ -151,46 +154,25 @@
               <span id="bigBarNinoLabel">0%</span>
             </div>
           </div>
-        </div>
-
-        <div class="glass-card stat-summary-card">
-          <div class="stat-number" id="statTotal">0</div>
-          <div class="stat-label">Votos totales</div>
-        </div>
-
-        <div class="glass-card stat-summary-card stat-pink">
-          <div class="stat-number" id="statNinaCount">0</div>
-          <div class="stat-label">Votos por Niña</div>
-          <div class="stat-percent" id="statNinaPercent">0%</div>
-        </div>
-
-        <div class="glass-card stat-summary-card stat-blue">
-          <div class="stat-number" id="statNinoCount">0</div>
-          <div class="stat-label">Votos por Niño</div>
-          <div class="stat-percent" id="statNinoPercent">0%</div>
-        </div>
-
-        <div class="glass-card chart-card">
-          <h3 class="chart-title">Distribución de votos</h3>
-          <canvas id="pieChart"></canvas>
-        </div>
-
-        <div class="glass-card chart-card">
-          <h3 class="chart-title">Comparación total</h3>
-          <canvas id="barChart"></canvas>
-        </div>
-
-        <div class="glass-card timeline-card">
-          <h3 class="chart-title">Participantes</h3>
-          <ul class="timeline-list" id="timelineList">
-            <li class="timeline-empty">Aún no hay votos registrados.</li>
-          </ul>
+          <p class="big-bar-total" id="statTotal">0 votos totales</p>
         </div>
 
         <div class="glass-card reset-card">
           <button class="btn btn-ghost" id="btnResetVotes">Reiniciar todos los votos</button>
         </div>
 
+      </div>
+    </section>
+
+    <!-- ============================================================ -->
+    <!-- TAB 3: PARTICIPANTES -->
+    <!-- ============================================================ -->
+    <section id="tabParticipants" class="tab-panel" role="tabpanel" aria-labelledby="tabBtnParticipants" hidden>
+      <div class="glass-card timeline-card timeline-card-standalone">
+        <h3 class="chart-title">Participantes</h3>
+        <ul class="timeline-list" id="timelineList">
+          <li class="timeline-empty">Aún no hay votos registrados.</li>
+        </ul>
       </div>
     </section>
 
@@ -201,8 +183,6 @@
   <!-- ============================================================ -->
   <!-- face-api.js: detección facial en el navegador -->
   <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
-  <!-- Chart.js: gráficos de pastel y barras -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
   <!-- supabase-js: base de datos compartida en la nube (sincroniza celular <-> TV) -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="supabase-config.js"></script>
