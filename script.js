@@ -824,7 +824,15 @@ function handleIdentityAnswer(rawText) {
   const rawName = extractRawName(rawText);
   const knownName = defaultNameForCategory(category);
   const name = knownName || rawName;
-  const voterName = relation && name ? `${capitalize(relation)} ${name}` : categoryDisplayName(category);
+  // Si hay nombre, lo usamos (con el parentesco delante si lo hay, ej.
+  // "Tía Brenda"; o solo, ej. "Tomás", si no se detectó parentesco). Si no
+  // hay nombre en absoluto, usamos un nombre genérico de respaldo.
+  let voterName;
+  if (name) {
+    voterName = relation ? `${capitalize(relation)} ${name}` : name;
+  } else {
+    voterName = categoryDisplayName(category);
+  }
 
   state.currentFamiliar = { category, label: entry.label, kicker: entry.kicker, message, audioUrl, voterName };
 
@@ -907,26 +915,34 @@ function startCameraFlow() {
 $('btnIniciar').addEventListener('click', startCameraFlow);
 
 // --- Pantalla 2: mensaje personalizado ---
+// Cuando el bebé termina de hablar, espera 4 segundos y pasa solo a la
+// votación — sin botón "Continuar".
 function showMessageScreen() {
   showScreen('message');
   $('messageKicker').textContent = state.currentFamiliar.kicker;
   $('messageText').textContent = state.currentFamiliar.message;
+
+  const goToVoteAfterPause = () => {
+    setTimeout(goToTransitionAndVote, 4000);
+  };
 
   // Si hay un audio real grabado para este mensaje, lo reproducimos tal
   // cual. Si no hay, o falla la reproducción, usamos la voz del navegador.
   const audioUrl = state.currentFamiliar.audioUrl;
   if (audioUrl) {
     const audio = new Audio(audioUrl);
-    audio.play().catch((err) => {
-      console.warn('No se pudo reproducir el audio grabado, usando voz del navegador:', err);
-      babySpeak(state.currentFamiliar.message);
+    audio.onended = goToVoteAfterPause;
+    audio.onerror = () => babySpeak(state.currentFamiliar.message, goToVoteAfterPause);
+    audio.play().catch(() => {
+      console.warn('No se pudo reproducir el audio grabado, usando voz del navegador.');
+      babySpeak(state.currentFamiliar.message, goToVoteAfterPause);
     });
   } else {
-    babySpeak(state.currentFamiliar.message);
+    babySpeak(state.currentFamiliar.message, goToVoteAfterPause);
   }
 }
 
-$('btnToVote').addEventListener('click', () => {
+function goToTransitionAndVote() {
   window.speechSynthesis && window.speechSynthesis.cancel();
   showScreen('transition');
   setTimeout(() => {
@@ -935,37 +951,31 @@ $('btnToVote').addEventListener('click', () => {
     $('voteVoterName').innerHTML = `Votando como <strong>${escapeHtml(name)}</strong>`;
     showScreen('vote');
   }, 1800);
-});
+}
 
 // --- Pantalla 4: votación ---
+// Elegir Niño/Niña envía el voto de inmediato — sin botón "Enviar voto".
 const voteOptions = document.querySelectorAll('.vote-option');
 voteOptions.forEach((btn) => {
-  btn.addEventListener('click', () => {
+  btn.addEventListener('click', async () => {
+    if (state.selectedVote) return; // evita doble envío si tocan rápido dos veces
     voteOptions.forEach((b) => b.classList.remove('is-selected'));
     btn.classList.add('is-selected');
     state.selectedVote = btn.dataset.vote;
-  });
-});
 
-$('btnSubmitVote').addEventListener('click', async () => {
-  const name = (state.currentFamiliar && state.currentFamiliar.voterName) || 'Invitado';
-  const errorEl = $('voteError');
-  if (!state.selectedVote) {
-    errorEl.textContent = 'Elige si crees que será niño o niña.';
-    return;
-  }
-  errorEl.textContent = '';
-  const submitBtn = $('btnSubmitVote');
-  submitBtn.disabled = true;
-  submitBtn.textContent = 'Guardando…';
-  const ok = await saveVote(name, state.selectedVote, state.currentFamiliar ? state.currentFamiliar.category : null);
-  submitBtn.disabled = false;
-  submitBtn.textContent = 'Enviar voto';
-  if (!ok) {
-    errorEl.textContent = 'No se pudo guardar el voto. Revisa tu conexión e inténtalo de nuevo.';
-    return;
-  }
-  showSurpriseScreen();
+    const name = (state.currentFamiliar && state.currentFamiliar.voterName) || 'Invitado';
+    const errorEl = $('voteError');
+    errorEl.textContent = '';
+
+    const ok = await saveVote(name, state.selectedVote, state.currentFamiliar ? state.currentFamiliar.category : null);
+    if (!ok) {
+      errorEl.textContent = 'No se pudo guardar el voto. Revisa tu conexión e inténtalo de nuevo.';
+      state.selectedVote = null; // permite volver a intentar
+      voteOptions.forEach((b) => b.classList.remove('is-selected'));
+      return;
+    }
+    showSurpriseScreen();
+  });
 });
 
 // --- Pantalla 5: sorpresa final ---
